@@ -159,20 +159,37 @@ app.get('/health', (req, res) => {
 
 // Global error handling middleware
 app.use(globalErrorHandler);
+// For Vercel deployment
+const vercelHandler = async (req, res) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  
+  // Handle the request with Express
+  return app(req, res);
+};
 
-// Start server (skip in test environment)
-if (process.env.NODE_ENV !== 'test') {
-    // Start the server
-    app.listen(PORT, async () => {
-        const localIP = await getLocalIP();
-        console.log(`\n🚀 Server is running in ${config.NODE_ENV} mode on port ${PORT}`);
-        console.log(`🌍 Environment: ${config.NODE_ENV}`);
-        console.log(`🌐 Access the server via:`);
-        console.log(`   - Local: http://localhost:${PORT}`);
-        console.log(`   - Network: http://${localIP}:${PORT}`);
-        console.log(`📊 Health check available at: http://localhost:${PORT}/health`);
-        console.log(`📚 API documentation available at: http://localhost:${PORT}/api/docs`);
+export default vercelHandler;
+
+// Start the server only when not in Vercel environment and not in test environment
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
+  const server = app.listen(PORT, async () => {
+    const localIP = await getLocalIP();
+    console.log(`\n🚀 Server is running in ${config.NODE_ENV || 'development'} mode on port ${PORT}`);
+    console.log(`Local: http://localhost:${PORT}`);
+    console.log(`Network: http://${localIP}:${PORT}`);
+  });
+
+  // Handle unhandled promise rejections
+  process.on('unhandledRejection', (err) => {
+    console.error('UNHANDLED REJECTION! 💥 Shutting down...');
+    console.error(err);
+    server.close(() => {
+      process.exit(1);
     });
+  });
 }
 
 // Helper function to get local IP address
@@ -206,4 +223,5 @@ const shutdown = async () => {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
-export default app;
+// Export the Express app for testing and local development
+export { app };
