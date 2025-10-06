@@ -24,8 +24,6 @@ const allowedOrigins = [
     'http://192.168.1.100:3002',
     'http://192.168.1.100:3000',
     'https://epilux48.vercel.app',
-    'https://epilux48.vercel.app:3000',
-    'https://epilux48.vercel.app:443'
 ];
 
 // Middleware - Dynamic CORS handling
