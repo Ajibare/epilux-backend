@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Withdrawal Request Received</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            max-width: 150px;
+            height: auto;
+            margin-bottom: 20px;
+        }
+        .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .highlight-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .amount {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1565c0;
+        }
+        .button {
+            display: inline-block;
+            background: #2196F3;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            margin: 15px 0;
+        }
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            margin-top: 20px;
+        }
+        .details {
+            margin: 20px 0;
+        }
+        .detail-row {
+            display: flex;
+            margin: 10px 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .detail-label {
+            flex: 1;
+            font-weight: bold;
+        }
+        .detail-value {
+            flex: 2;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="<%= logoUrl || 'https://via.placeholder.com/150' %>" alt="<%= appName %>" class="logo">
+        <h2>Withdrawal Request Received</h2>
+    </div>
+    
+    <div class="content">
+        <p>Hello <%= name %>,</p>
+        
+        <p>We've received your request to withdraw your affiliate earnings. Here are the details:</p>
+        
+        <div class="highlight-box">
+            <p style="margin: 0; text-align: center;">
+                <span style="font-size: 14px;">Withdrawal Amount</span><br>
+                <span class="amount">$<%= amount %></span>
+            </p>
+        </div>
+        
+        <div class="details">
+            <div class="detail-row">
+                <div class="detail-label">Payment Method:</div>
+                <div class="detail-value"><%= paymentMethod %></div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Request Date:</div>
+                <div class="detail-value"><%= requestDate %></div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Status:</div>
+                <div class="detail-value"><strong>Pending Approval</strong></div>
+            </div>
+        </div>
+        
+        <p>Our team is currently processing your request. Most withdrawal requests are processed within 3-5 business days, but it may take longer depending on your payment method.</p>
+        
+        <p>You'll receive another email once your withdrawal has been processed. If we need any additional information to complete your request, we'll contact you using the email associated with your account.</p>
+        
+        <div style="text-align: center; margin: 25px 0;">
+            <a href="<%= dashboardUrl %>" class="button">View Withdrawal Status</a>
+        </div>
+        
+        <p>If you didn't initiate this withdrawal or believe this is an error, please contact our support team immediately.</p>
+        
+        <p>Best regards,<br>
+        The <%= appName %> Team</p>
+    </div>
+    
+    <div class="footer">
+        <p>© <%= currentYear %> <%= appName %>. All rights reserved.</p>
+        <p>This is an automated message. Please do not reply to this email.</p>
+    </div>
+</body>
+</html>

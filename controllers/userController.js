@@ -1,0 +1,56 @@
+// server/controllers/userController.js
+import User from '../models/User.js';
+import { generateJsonExport } from '../utils/dataExport.js';
+
+export const deleteUser = async (req, res, next) => {
+    try {
+        const user = await User.findByIdAndDelete(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        // Optional: Add cleanup for related data (posts, comments, etc.)
+        // await Post.deleteMany({ user: req.user.id });
+        // await Comment.deleteMany({ user: req.user.id });
+        
+        // Logout the user
+        res.clearCookie('token');
+        
+        return res.status(200).json({
+            success: true,
+            message: 'Your account has been permanently deleted'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const exportUserData = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Get all user-related data
+        // const posts = await Post.find({ user: user._id });
+        // const comments = await Comment.find({ user: user._id });
+        
+        const userData = {
+            profile: user,
+            // posts,
+            // comments,
+            // Add other related data as needed
+            exportedAt: new Date().toISOString()
+        };
+
+        // Generate JSON file
+        const fileName = `user-data-${user._id}-${Date.now()}.json`;
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+        
+        return res.send(generateJsonExport(userData));
+    } catch (error) {
+        next(error);
+    }
+};
