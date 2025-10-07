@@ -54,7 +54,7 @@ CORS_ORIGIN=http://localhost:3000
 EMAIL_SERVICE=gmail
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
-EMAIL_USER=
+EMAIL_USER= 
 EMAIL_PASS=
 
 # File Upload Configuration
@@ -96,8 +96,8 @@ CORS_ORIGIN=https://epilux48.vercel.app
 EMAIL_SERVICE=gmail
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
-EMAIL_USER=your-production-email@gmail.com
-EMAIL_PASS=your-production-app-password
+EMAIL_USER=epiluxcompany@gmail.com
+EMAIL_PASS=De-asa-7470
 
 # File Upload Configuration
 MAX_FILE_SIZE=5242880

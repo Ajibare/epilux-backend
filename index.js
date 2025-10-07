@@ -82,12 +82,15 @@ if (configErrors.length > 0) {
 
 // MongoDB Connection (skip in test environment)
 if (process.env.NODE_ENV !== 'test') {
+    // mongoose.connect(config.MONGODB_URI, {
+    //     useNewUrlParser: true,
+    //     useUnifiedTopology: true,
+    //     serverSelectionTimeoutMS: 5000,
+    //     socketTimeoutMS: 45000,
+
     mongoose.connect(config.MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-        serverSelectionTimeoutMS: 5000,
-        socketTimeoutMS: 45000,
-    })
+        serverSelectionTimeoutMS: 10000,
+      })
     .then(() => {
         console.log('MongoDB connected successfully');
         console.log('Configuration status:', JSON.stringify(getConfigStatus(), null, 2));
@@ -162,18 +165,35 @@ app.get('/health', (req, res) => {
 // Global error handling middleware
 app.use(globalErrorHandler);
 // For Vercel deployment
-const vercelHandler = async (req, res) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+// const vercelHandler = async (req, res) => {
+//   // Handle CORS preflight requests
+//   if (req.method === 'OPTIONS') {
+//     res.status(200).end();
+//     return;
+//   }
   
-  // Handle the request with Express
-  return app(req, res);
-};
+//   // Handle the request with Express
+//   return app(req, res);
+// };
 
-export default vercelHandler;
+// export default vercelHandler;
+
+
+const vercelHandler = (req, res) => {
+    try {
+      if (req.method === 'OPTIONS') {
+        res.status(200).end();
+        return;
+      }
+      return app(req, res);
+    } catch (err) {
+      console.error('❌ Serverless function crashed:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  };
+
+
+  export default vercelHandler
 
 // Start the server only when not in Vercel environment and not in test environment
 if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
