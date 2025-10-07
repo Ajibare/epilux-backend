@@ -26,7 +26,9 @@ const config = {
     CORS_ORIGIN: process.env.CORS_ORIGIN || 'https://epilux48.vercel.app',
     
     // Frontend URL for password reset links
-    FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
+    // FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
+    FRONTEND_URL: process.env.FRONTEND_URL || 'https://epilux48.vercel.app',
+
     
     // App configuration
     APP_NAME: process.env.APP_NAME || 'Epilux',
