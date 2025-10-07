@@ -18,6 +18,8 @@ const allowedOrigins = [
 ];
 
 // ✅ Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
@@ -52,16 +54,68 @@ if (configErrors.length > 0) {
 // ✅ MongoDB connection
 let isConnected = false;
 const connectDB = async () => {
-  if (isConnected) return;
+  if (isConnected) {
+    console.log('Using existing database connection');
+    return;
+  }
+  
+  console.log('Connecting to MongoDB...');
+  console.log('MongoDB URI:', config.MONGODB_URI ? 'Present' : 'Missing!');
+  
   try {
-    await mongoose.connect(config.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
+    const options = {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      maxPoolSize: 10,
+      retryWrites: true,
+      w: 'majority'
+    };
+    
+    await mongoose.connect(config.MONGODB_URI, options);
     isConnected = true;
-    console.log('MongoDB connected');
+    console.log('✅ MongoDB connected successfully');
+    
+    // Connection events for better debugging
+    mongoose.connection.on('connected', () => {
+      console.log('Mongoose connected to DB');
+    });
+    
+    mongoose.connection.on('error', (err) => {
+      console.error('Mongoose connection error:', err);
+    });
+    
+    mongoose.connection.on('disconnected', () => {
+      console.log('Mongoose disconnected');
+      isConnected = false;
+    });
+    
   } catch (error) {
-    console.error('MongoDB connection error:', error);
+    console.error('❌ MongoDB connection failed:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      codeName: error.codeName,
+      errorResponse: error.errorResponse,
+      stack: error.stack
+    });
+    // Don't exit in production to allow for auto-recovery
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
+    }
   }
 };
+
+// Initialize database connection
 connectDB();
+
+// Reconnect on connection loss
+setInterval(async () => {
+  if (!isConnected) {
+    console.log('Attempting to reconnect to MongoDB...');
+    await connectDB();
+  }
+}, 10000); // Try to reconnect every 10 seconds
 
 // ✅ Routes
 import authRoutes from './routes/auth.js';
@@ -123,6 +177,16 @@ const shutdown = async () => {
 
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
+
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
+});
 
 // ✅ Export handler for Vercel
 const handler = async (req, res) => {

@@ -17,61 +17,172 @@ const router = express.Router();
 
 // Register new user
 router.post('/register', validateRegistration, handleValidationErrors, async (req, res) => {
+    console.log('=== NEW REGISTRATION REQUEST ===');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
     try {
         const { email, password, firstName, lastName, role = 'user' } = req.body;
-
-        // Check if user already exists
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(409).json({
+        
+        console.log('Validating request data...');
+        if (!email || !password || !firstName || !lastName) {
+            console.error('Missing required fields:', { email: !!email, password: !!password, firstName: !!firstName, lastName: !!lastName });
+            return res.status(400).json({
                 success: false,
-                message: 'User with this email already exists'
+                message: 'Missing required fields',
+                required: { email: true, password: true, firstName: true, lastName: true },
+                received: { email: !!email, password: !!password, firstName: !!firstName, lastName: !!lastName }
             });
         }
 
+        // Check if user already exists
+        console.log('Checking for existing user with email:', email);
+        try {
+            const existingUser = await User.findOne({ email }).exec();
+            if (existingUser) {
+                console.log('❌ Registration failed: User already exists', { 
+                    email,
+                    userId: existingUser._id,
+                    createdAt: existingUser.createdAt 
+                });
+                return res.status(409).json({
+                    success: false,
+                    message: 'User with this email already exists',
+                    error: 'EMAIL_EXISTS'
+                });
+            }
+        } catch (dbError) {
+            console.error('❌ Database error while checking for existing user:', {
+                name: dbError.name,
+                message: dbError.message,
+                code: dbError.code,
+                codeName: dbError.codeName,
+                stack: dbError.stack
+            });
+            throw dbError;
+        }
+
         // Create new user
+        console.log('Creating new user:', { 
+            email, 
+            firstName, 
+            lastName, 
+            role,
+            emailVerified: true
+        });
+        
         const user = new User({
             email,
-            password,
+            password, // This will be hashed by the pre-save hook
             firstName,
             lastName,
             role,
             emailVerified: true
         });
+        
+        console.log('User object created, attempting to save...');
 
-        await user.save();
+        try {
+            console.log('Saving user to database...');
+            await user.save();
+            console.log('✅ User saved successfully:', { 
+                userId: user._id,
+                email: user.email,
+                role: user.role
+            });
 
-        // Generate token
-        const token = generateToken(user._id, user.role);
-
-        // Return user data without password
-        const userResponse = {
-            id: user._id,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            role: user.role,
-            emailVerified: user.emailVerified,
-            createdAt: user.createdAt
-        };
-
-        res.status(201).json({
-            success: true,
-            message: 'User registered successfully',
-            token,
-            user: userResponse
-        });
-
+            // Generate JWT token
+            console.log('Generating JWT token...');
+            const token = generateToken(user._id, user.role);
+            
+            console.log('✅ Registration successful, sending response...');
+            return res.status(201).json({
+                success: true,
+                message: 'User registered successfully',
+                data: {
+                    user: {
+                        id: user._id,
+                        email: user.email,
+                        firstName: user.firstName,
+                        lastName: user.lastName,
+                        role: user.role
+                    },
+                    token
+                }
+            });
+        } catch (saveError) {
+            console.error('❌ Error saving user:', {
+                name: saveError.name,
+                message: saveError.message,
+                code: saveError.code,
+                codeName: saveError.codeName,
+                keyPattern: saveError.keyPattern,
+                keyValue: saveError.keyValue,
+                errors: saveError.errors,
+                stack: saveError.stack
+            });
+            
+            if (saveError.name === 'ValidationError') {
+                const errors = Object.values(saveError.errors).map(err => ({
+                    field: err.path,
+                    message: err.message,
+                    type: err.kind
+                }));
+                return res.status(400).json({
+                    success: false,
+                    message: 'Validation failed',
+                    error: 'VALIDATION_ERROR',
+                    errors
+                });
+            }
+            
+            if (saveError.code === 11000) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'A user with this email already exists',
+                    error: 'DUPLICATE_EMAIL',
+                    field: Object.keys(saveError.keyPattern)[0],
+                    value: saveError.keyValue.email
+                });
+            }
+            
+            throw saveError; // Let the global error handler catch this
+        }
     } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error during registration'
+        console.error('❌ Unhandled error in registration route:', {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            codeName: error.codeName,
+            stack: error.stack,
+            ...(error.keyPattern && { keyPattern: error.keyPattern }),
+            ...(error.keyValue && { keyValue: error.keyValue }),
+            ...(error.errors && { errors: error.errors })
         });
+        
+        // Default error response
+        const errorResponse = {
+            success: false,
+            message: 'Internal server error during registration',
+            error: 'INTERNAL_SERVER_ERROR'
+        };
+        
+        // Add more details in development
+        if (process.env.NODE_ENV === 'development') {
+            errorResponse.debug = {
+                name: error.name,
+                message: error.message,
+                ...(error.code && { code: error.code }),
+                ...(error.keyPattern && { keyPattern: error.keyPattern })
+            };
+        }
+        
+        res.status(500).json(errorResponse);
+    } finally {
+        console.log('=== REGISTRATION REQUEST COMPLETED ===\n');
     }
 });
 
-// Login user
+// User login
 router.post('/login', validateLogin, handleValidationErrors, async (req, res) => {
     try {
         const { email, password } = req.body;
