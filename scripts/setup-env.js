@@ -41,8 +41,7 @@ PORT=5000
 NODE_ENV=development
 
 # Database Configuration
-MONGODB_URI=mongodb://localhost:27017/epilux
-
+MONGODB_URI=mongodb+srv://ajibarebabajide1_db_user:epilux@epilux.qrmkv4r.mongodb.net/
 # JWT Configuration
 JWT_SECRET=${generateRandomString(64)}
 JWT_EXPIRE=7d
@@ -87,11 +86,11 @@ CACHE_TTL=3600
 const productionTemplate = `# Production Configuration
 NODE_ENV=production
 PORT=5000
-MONGODB_URI=mongodb://your-production-db:27017/epilux
+MONGODB_URI=mongodb+srv://ajibarebabajide1_db_user:epilux@epilux.qrmkv4r.mongodb.net/
 JWT_SECRET=${generateRandomString(64)}
 JWT_EXPIRE=7d
 JWT_REFRESH_EXPIRE=30d
-CORS_ORIGIN=https://your-frontend-domain.com
+CORS_ORIGIN=https://epilux48.vercel.app
 
 # Email Configuration
 EMAIL_SERVICE=gmail
@@ -129,7 +128,7 @@ CACHE_TTL=3600
 const testTemplate = `# Test Configuration
 NODE_ENV=test
 PORT=5001
-MONGODB_URI=mongodb://localhost:27017/epilux_test
+MONGODB_URI=mongodb+srv://ajibarebabajide1_db_user:epilux@epilux.qrmkv4r.mongodb.net/
 JWT_SECRET=${generateRandomString(32)}
 JWT_EXPIRE=1h
 JWT_REFRESH_EXPIRE=1h

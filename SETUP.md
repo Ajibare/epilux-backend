@@ -22,7 +22,7 @@ PORT=5000
 NODE_ENV=development
 
 # Database Configuration
-MONGODB_URI=mongodb://localhost:27017/epilux
+MONGODB_URI=mongodb+srv://ajibarebabajide1_db_user:epilux@epilux.qrmkv4r.mongodb.net/
 
 # JWT Configuration
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
@@ -87,7 +87,7 @@ For production deployment, create a production-specific environment file:
 # Production Configuration
 NODE_ENV=production
 PORT=5000
-MONGODB_URI=mongodb://your-production-db:27017/epilux
+MONGODB_URI=mongodb+srv://ajibarebabajide1_db_user:epilux@epilux.qrmkv4r.mongodb.net/
 JWT_SECRET=your-production-jwt-secret-key
 JWT_EXPIRE=7d
 JWT_REFRESH_EXPIRE=30d
@@ -102,7 +102,7 @@ For testing environment:
 # Test Configuration
 NODE_ENV=test
 PORT=5001
-MONGODB_URI=mongodb://localhost:27017/epilux_test
+MONGODB_URI=mongodb+srv://ajibarebabajide1_db_user:epilux@epilux.qrmkv4r.mongodb.net/
 JWT_SECRET=test-jwt-secret-key
 JWT_EXPIRE=1h
 CORS_ORIGIN=http://localhost:3000
@@ -217,7 +217,7 @@ For Docker deployment, use environment variables in `docker-compose.yml`:
 environment:
   - NODE_ENV=production
   - PORT=5000
-  - MONGODB_URI=mongodb://mongodb:27017/epilux
+  - MONGODB_URI=mongodb+srv://ajibarebabajide1_db_user:epilux@epilux.qrmkv4r.mongodb.net/
   - JWT_SECRET=${JWT_SECRET}
 ```
 
