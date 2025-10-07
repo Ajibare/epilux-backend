@@ -22,7 +22,8 @@ const config = {
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'De-asa-7470',
     
     // CORS configuration
-    CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3000' || 'http://127.0.0.1:3000' || 'http://10.243.66.17:3000' || 'http://192.168.1.101:3000' || 'http://192.168.1.101:3001',
+    // CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3000' || ''
+    CORS_ORIGIN: process.env.CORS_ORIGIN || 'https://epilux48.vercel.app',
     
     // Frontend URL for password reset links
     FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
