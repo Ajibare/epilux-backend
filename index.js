@@ -19,12 +19,16 @@ const PORT = config.PORT;
 // const PORT = process.env.PORT || 5000;
 
 // CORS Configuration
+// const allowedOrigins = [
+//     'http://localhost:3000'
+//     'https://epilux48.vercel.app',
+// ];
+
+
 const allowedOrigins = [
-    'http://localhost:3000',
-    'http://192.168.1.100:3002',
-    'http://192.168.1.100:3000',
     'https://epilux48.vercel.app',
-];
+    'http://localhost:3000',
+  ];
 
 // Middleware - Dynamic CORS handling
 app.use(cors({
