@@ -75,42 +75,86 @@ const handleJWTExpiredError = () => {
 
 // Development error response
 const sendErrorDev = (err, res) => {
-    res.status(err.statusCode).json({
+    // Check if this is a Vercel serverless function response
+    const isVercelResponse = res && typeof res.status !== 'function' && typeof res.send === 'function';
+    
+    const errorResponse = {
         success: false,
         status: err.status,
         message: err.message,
-        stack: err.stack,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
         errors: err.errors || undefined,
         isOperational: err.isOperational
-    });
+    };
+    
+    if (isVercelResponse) {
+        res.send({
+            statusCode: err.statusCode || 500,
+            body: JSON.stringify(errorResponse)
+        });
+    } else {
+        res.status(err.statusCode).json(errorResponse);
+    }
 };
 
 // Production error response
 const sendErrorProd = (err, res) => {
+    // Check if this is a Vercel serverless function response
+    const isVercelResponse = res && typeof res.status !== 'function' && typeof res.send === 'function';
+    
     // Operational, trusted error: send message to client
     if (err.isOperational) {
-        res.status(err.statusCode).json({
-            success: false,
-            status: err.status,
-            message: err.message,
-            errors: err.errors || undefined
-        });
+        if (isVercelResponse) {
+            res.send({
+                statusCode: err.statusCode || 500,
+                body: JSON.stringify({
+                    success: false,
+                    status: err.status,
+                    message: err.message,
+                    errors: err.errors || undefined
+                })
+            });
+        } else {
+            res.status(err.statusCode).json({
+                success: false,
+                status: err.status,
+                message: err.message,
+                errors: err.errors || undefined
+            });
+        }
     } 
     // Programming or other unknown error: don't leak error details
     else {
         // Log error for debugging
         console.error('ERROR 💥', err);
         
-        res.status(500).json({
-            success: false,
-            status: 'error',
-            message: 'Something went wrong!'
-        });
+        if (isVercelResponse) {
+            res.send({
+                statusCode: 500,
+                body: JSON.stringify({
+                    success: false,
+                    status: 'error',
+                    message: 'Something went wrong!'
+                })
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                status: 'error',
+                message: 'Something went wrong!'
+            });
+        }
     }
 };
 
 // Global error handling middleware
-const globalErrorHandler = (err, req, res) => {
+const globalErrorHandler = (err, req, res, next) => {
+    // Handle case where res is not provided (Vercel serverless functions)
+    if (!res) {
+        console.error('Error handler called without response object:', err);
+        return next ? next(err) : console.error('No next function available');
+    }
+
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
     
@@ -131,13 +175,31 @@ const globalErrorHandler = (err, req, res) => {
     }
     
     // Send error response based on environment
-    if (process.env.NODE_ENV === 'development') {
-        sendErrorDev(error, res);
-    } else if (process.env.NODE_ENV === 'production') {
-        sendErrorProd(error, res);
-    } else {
-        // Default to development behavior
-        sendErrorDev(error, res);
+    try {
+        if (process.env.NODE_ENV === 'development') {
+            sendErrorDev(error, res);
+        } else if (process.env.NODE_ENV === 'production') {
+            sendErrorProd(error, res);
+        } else {
+            // Default to development behavior
+            sendErrorDev(error, res);
+        }
+    } catch (handlerError) {
+        console.error('Error in error handler:', handlerError);
+        if (res && res.send) {
+            res.send({
+                statusCode: 500,
+                body: JSON.stringify({
+                    success: false,
+                    status: 'error',
+                    message: 'An error occurred while processing your request',
+                    ...(process.env.NODE_ENV === 'development' && { 
+                        originalError: error.message,
+                        handlerError: handlerError.message 
+                    })
+                })
+            });
+        }
     }
 };
 
