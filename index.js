@@ -124,6 +124,7 @@ import orderRoutes from './routes/orders.js';
 import affiliateRoutes from './routes/affiliate.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/user.js';
+import messageRoutes from './routes/messages.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
@@ -132,6 +133,7 @@ app.use('/api/affiliate', affiliateRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/messages', messageRoutes);
 
 // ✅ Basic route
 app.get('/', (req, res) => {

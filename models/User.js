@@ -30,6 +30,14 @@ const userSchema = new Schema({
         enum: ['user', 'admin', 'affiliate'],
         default: 'user'
     },
+    suspended: {
+        type: Boolean,
+        default: false
+    },
+    suspensionReason: {
+        type: String,
+        default: ''
+    },
     emailVerified: {
         type: Boolean,
         default: true
@@ -95,4 +103,7 @@ userSchema.pre('findOneAndUpdate', function(next) {
     next();
 });
 
+userSchema.methods.comparePassword = async function(enteredPassword) {
+    return await bcrypt.compare(enteredPassword, this.password);
+};
 export default model('User', userSchema);

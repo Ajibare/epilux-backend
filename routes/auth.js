@@ -10,8 +10,12 @@ import {
     validateProfileUpdate,
     validateForgotPassword,
     validateResetPassword,
-    handleValidationErrors 
-} from '../middleware/validation.js';
+    handleValidationErrors,
+    validatePasswordChange
+} from '../config/validation.js';
+import { authenticate } from '../middleware/auth.js';
+import { changePassword, updateProfile } from '../controllers/authController.js';
+import upload from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -623,5 +627,9 @@ router.post('/reset-password', validateResetPassword, handleValidationErrors, as
     }
 });
 
+
+// In auth.js (routes)
+router.put('/change-password', authenticate, validatePasswordChange, handleValidationErrors, changePassword);
+router.put('/profile', authenticate, upload.single('avatar'), validateProfileUpdate, handleValidationErrors, updateProfile);
 // Export the router as default
 export default router;

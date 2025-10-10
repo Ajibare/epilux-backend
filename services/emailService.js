@@ -134,8 +134,70 @@ class EmailService {
             throw error;
         }
     }
+
+    // Send a notification email
+    async sendNotificationEmail({ to, subject, template, context = {} }) {
+        if (!this.isConfigured) {
+            // Mock email service for development
+            console.log('MOCK EMAIL - Notification');
+            console.log('To:', to);
+            console.log('Subject:', subject);
+            console.log('Template:', template);
+            console.log('Context:', JSON.stringify(context, null, 2));
+            console.log('--- End Mock Email ---');
+            return true;
+        }
+
+        // In a real implementation, you would render the email template here
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .content { background: #f9f9f9; padding: 30px; border-radius: 8px; margin-bottom: 20px; }
+                    .button { display: inline-block; background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }
+                </style>
+            </head>
+            <body>
+                <div class="content">
+                    <h2>${subject}</h2>
+                    ${context.message || ''}
+                    ${context.actionUrl ? `
+                        <div style="margin: 25px 0;">
+                            <a href="${context.actionUrl}" class="button">${context.actionText || 'View Details'}</a>
+                        </div>
+                    ` : ''}
+                    <p>If you have any questions, please contact our support team.</p>
+                    <p>Best regards,<br>${config.APP_NAME} Team</p>
+                </div>
+            </body>
+            </html>
+        `;
+
+        const mailOptions = {
+            from: config.EMAIL_FROM || `"${config.APP_NAME}" <${config.SMTP_USER}>`,
+            to,
+            subject: `${config.APP_NAME} - ${subject}`,
+            html
+        };
+
+        try {
+            await this.transporter.sendMail(mailOptions);
+            return true;
+        } catch (error) {
+            console.error('Error sending notification email:', error);
+            throw new Error('Failed to send notification email');
+        }
+    }
 }
 
 const emailService = new EmailService();
 
-export default emailService;
+// Export both the instance and the class for testing/mocking
+export { emailService as default, EmailService };
+
+// Export the notification function for direct use
+export const sendNotificationEmail = (options) => {
+    return emailService.sendNotificationEmail(options);
+};

@@ -863,33 +863,128 @@ const updateSettings = async (req, res) => {
     console.error('Error updating settings:', error);
     res.status(500).json({
       success: false,
-      message: 'Error updating settings'
+      message: 'Error updating settings',
+      error: error.message
+    });
+  }
+};
+
+// Suspend/Unsuspend a user
+const suspendUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { suspended, reason = '' } = req.body;
+
+    if (typeof suspended !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'Suspended status is required and must be a boolean' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { 
+        suspended,
+        suspensionReason: suspended ? reason : undefined
+      },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `User has been ${suspended ? 'suspended' : 'unsuspended'} successfully`,
+      data: user
+    });
+  } catch (error) {
+    console.error('Error updating user suspension status:', error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// Create a new user (admin only)
+const createUser = async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, role = 'user', phone, address } = req.body;
+
+    // Validate required fields
+    if (!email || !password || !firstName || !lastName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields',
+        required: { email: true, password: true, firstName: true, lastName: true },
+        received: { email: !!email, password: !!password, firstName: !!firstName, lastName: !!lastName }
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: 'User with this email already exists',
+        error: 'EMAIL_EXISTS'
+      });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create new user
+    const newUser = new User({
+      email,
+      password: hashedPassword,
+      firstName,
+      lastName,
+      role,
+      emailVerified: true, // Admin-created users are auto-verified
+      profile: {
+        phone,
+        address
+      }
+    });
+
+    await newUser.save();
+
+    // Return user data without password
+    const userResponse = newUser.toObject();
+    delete userResponse.password;
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: userResponse
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating user',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
 // Export all controller functions
 export {
-  getDashboardStats,
-  getUsers,
-  getUser,
-  updateUser,
-  deleteUser,
-  getRecentAffiliateActivity,
-  getRecentSignups,
-  getTopSellingProducts,
-  getSalesTrend,
-  getUserAcquisition,
-  getRecentOrders,
-  calculateCustomerRetention,
-  getAffiliates,
-  getAffiliate,
-  updateAffiliateStatus,
-  getAffiliateCommissions,
-  createCommission,
-  updateCommissionStatus,
-  getWithdrawals,
-  updateWithdrawalStatus,
-  getSettings,
-  updateSettings
+    getDashboardStats,
+    getUser,
+    getUsers,
+    updateUser,
+    deleteUser,
+    suspendUser,
+    createUser,
+    getRecentAffiliateActivity,
+    getAffiliates,
+    getAffiliate,
+    updateAffiliateStatus,
+    getAffiliateCommissions,
+    createCommission,
+    updateCommissionStatus,
+    getWithdrawals,
+    updateWithdrawalStatus,
+    getSettings,
+    updateSettings
 };

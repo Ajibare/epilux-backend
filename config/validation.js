@@ -1,4 +1,5 @@
 import config from './environment.js';
+import { body, validationResult } from 'express-validator';
 
 // Configuration validation utilities
 const validateConfig = () => {
@@ -114,8 +115,122 @@ const sanitizeConfig = () => {
     return sanitized;
 };
 
+const validatePasswordChange = [
+    body('currentPassword')
+        .notEmpty().withMessage('Current password is required')
+        .isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('newPassword')
+        .notEmpty().withMessage('New password is required')
+        .isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+        .custom((value, { req }) => {
+            if (value === req.body.currentPassword) {
+                throw new Error('New password must be different from current password');
+            }
+            return true;
+        })
+];
+
+const validateProfileUpdate = [
+    body('firstName')
+        .optional()
+        .trim()
+        .isLength({ min: 2 }).withMessage('First name must be at least 2 characters'),
+    body('lastName')
+        .optional()
+        .trim()
+        .isLength({ min: 2 }).withMessage('Last name must be at least 2 characters'),
+    body('phone')
+        .optional()
+        .trim()
+        .isMobilePhone('any').withMessage('Invalid phone number'),
+    body('address')
+        .optional()
+        .trim()
+        .isLength({ min: 5 }).withMessage('Address must be at least 5 characters')
+];
+
+// Handle validation errors middleware
+const handleValidationErrors = (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            success: false,
+            message: 'Validation failed',
+            errors: errors.array().map(err => ({
+                field: err.param,
+                message: err.msg
+            }))
+        });
+    }
+    next();
+};
+
+// Registration validation
+const validateRegistration = [
+    body('email')
+        .isEmail().withMessage('Please provide a valid email')
+        .normalizeEmail(),
+    body('password')
+        .isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+    body('firstName')
+        .notEmpty().withMessage('First name is required')
+        .trim()
+        .isLength({ min: 2 }).withMessage('First name must be at least 2 characters'),
+    body('lastName')
+        .notEmpty().withMessage('Last name is required')
+        .trim()
+        .isLength({ min: 2 }).withMessage('Last name must be at least 2 characters')
+];
+
+// Login validation
+const validateLogin = [
+    body('email')
+        .isEmail().withMessage('Please provide a valid email')
+        .normalizeEmail(),
+    body('password')
+        .notEmpty().withMessage('Password is required')
+];
+
+// Forgot password validation
+const validateForgotPassword = [
+    body('email')
+        .isEmail().withMessage('Please provide a valid email')
+        .normalizeEmail()
+];
+
+// Reset password validation
+const validateResetPassword = [
+    body('token')
+        .notEmpty().withMessage('Token is required'),
+    body('password')
+        .isLength({ min: 6 }).withMessage('Password must be at least 6 characters long')
+];
+
+// Password update validation
+const validatePasswordUpdate = [
+    body('currentPassword')
+        .notEmpty().withMessage('Current password is required'),
+    body('newPassword')
+        .isLength({ min: 6 }).withMessage('New password must be at least 6 characters long')
+        .custom((value, { req }) => {
+            if (value === req.body.currentPassword) {
+                throw new Error('New password must be different from current password');
+            }
+            return true;
+        })
+];
+
+// Export all functions
 export {
     validateConfig,
     getConfigStatus,
-    sanitizeConfig
+    sanitizeConfig,
+    handleValidationErrors,
+    validateRegistration,
+    validateLogin,
+    validatePasswordUpdate,
+    validateProfileUpdate,
+    validateForgotPassword,
+    validateResetPassword,
+    validatePasswordChange
 };
