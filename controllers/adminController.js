@@ -250,6 +250,12 @@ const getRecentSignups = async (limit = 5) => {
  */
 const getDashboardStats = async (req, res) => {
   try {
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const twoMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+
+    // Current period data
     const [
       totalUsers,
       totalProducts,
@@ -258,8 +264,15 @@ const getDashboardStats = async (req, res) => {
       monthlyRevenue,
       pendingOrders,
       completedOrders,
-      lowStockProducts
+      lowStockProducts,
+      activeAffiliates,
+      // Previous period data for comparison
+      lastMonthOrders,
+      lastMonthRevenue,
+      lastMonthAffiliates,
+      lastMonthPendingOrders
     ] = await Promise.all([
+      // Current period
       User.countDocuments(),
       Product.countDocuments(),
       Order.countDocuments(),
@@ -271,17 +284,57 @@ const getDashboardStats = async (req, res) => {
         { 
           $match: { 
             status: 'completed',
-            createdAt: { $gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
+            createdAt: { $gte: currentMonthStart }
           }
         },
         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
       ]),
       Order.countDocuments({ status: 'pending' }),
       Order.countDocuments({ status: 'completed' }),
-      Product.countDocuments({ stock: { $lt: 10 } })
+      Product.countDocuments({ stock: { $lt: 10 } }),
+      User.countDocuments({ role: 'affiliate', isActive: true }),
+      
+      // Previous period data
+      Order.countDocuments({ 
+        createdAt: { 
+          $gte: lastMonthStart,
+          $lt: currentMonthStart
+        }
+      }),
+      Order.aggregate([
+        { 
+          $match: { 
+            status: 'completed',
+            createdAt: { 
+              $gte: lastMonthStart,
+              $lt: currentMonthStart
+            }
+          } 
+        },
+        { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+      ]),
+      User.countDocuments({ 
+        role: 'affiliate',
+        isActive: true,
+        createdAt: { $lt: currentMonthStart }
+      }),
+      Order.countDocuments({ 
+        status: 'pending',
+        createdAt: { 
+          $gte: lastMonthStart,
+          $lt: currentMonthStart
+        }
+      })
     ]);
 
-    const [recentUsers, topProducts, recentActivities] = await Promise.all([
+    // Calculate percentage changes
+    const calculateChange = (current, previous) => {
+      if (!previous || previous === 0) return 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    // Get additional data in parallel
+    const [recentUsers, topProducts, recentActivities, salesTrend, userAcquisition, customerRetention] = await Promise.all([
       User.find()
         .sort({ createdAt: -1 })
         .limit(5)
@@ -292,25 +345,44 @@ const getDashboardStats = async (req, res) => {
         getRecentOrders(3),
         getRecentSignups(3),
         getRecentAffiliateActivity(4)
-      ]).then(results => results.flat().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 10))
+      ]).then(results => results.flat().sort((a, b) => new Date(b.timestamp || b.createdAt) - new Date(a.timestamp || a.createdAt)).slice(0, 10)),
+      getSalesTrend(30),
+      getUserAcquisition(90),
+      calculateCustomerRetention()
     ]);
 
+    // Extract values from aggregations
+    const currentRevenue = totalRevenue[0]?.total || 0;
+    const currentMonthlyRevenue = monthlyRevenue[0]?.total || 0;
+    const lastMonthRev = lastMonthRevenue[0]?.total || 0;
+
+    // Prepare response
     const stats = {
       overview: {
-        totalUsers,
-        totalProducts,
+        // Main metrics
         totalOrders,
-        totalRevenue: totalRevenue[0]?.total || 0,
-        monthlyRevenue: monthlyRevenue[0]?.total || 0,
+        totalRevenue: currentRevenue,
+        monthlyRevenue: currentMonthlyRevenue,
         pendingOrders,
         completedOrders,
-        lowStockProducts
+        totalUsers,
+        totalProducts,
+        lowStockProducts,
+        activeAffiliates,
+        
+        // Percentage changes
+        changes: {
+          totalOrders: calculateChange(totalOrders, lastMonthOrders),
+          totalRevenue: calculateChange(currentRevenue, lastMonthRev),
+          pendingOrders: calculateChange(pendingOrders, lastMonthPendingOrders),
+          activeAffiliates: calculateChange(activeAffiliates, lastMonthAffiliates)
+        }
       },
       analytics: {
         topSellingProducts: topProducts,
-        salesTrend: await getSalesTrend(30),
-        userAcquisition: await getUserAcquisition(90),
-        customerRetention: await calculateCustomerRetention()
+        salesTrend,
+        userAcquisition,
+        customerRetention
       },
       recent: {
         users: recentUsers,
