@@ -8,7 +8,7 @@ import {
     updateTicketStatus,
     assignTicket
 } from '../controllers/supportController.js';
-import upload from '../middleware/upload.js';
+import { upload } from '../middleware/upload.js';
 
 const router = express.Router();
 

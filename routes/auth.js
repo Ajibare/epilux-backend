@@ -15,7 +15,7 @@ import {
 } from '../config/validation.js';
 import { authenticate } from '../middleware/auth.js';
 import { changePassword, updateProfile } from '../controllers/authController.js';
-import upload from '../middleware/upload.js';
+import { upload } from '../middleware/upload.js';
 
 const router = express.Router();
 

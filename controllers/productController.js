@@ -1,24 +1,124 @@
 import Product from '../models/Product.js';
+import { v2 as cloudinary } from 'cloudinary';
+import path from 'path';
+import fs from 'fs';
+
+// Configure Cloudinary
+// cloudinary.config({
+//     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+//     api_key: process.env.CLOUDINARY_API_KEY,
+//     api_secret: process.env.CLOUDINARY_API_SECRET
+// });
+
+
+
+// Configure Cloudinary if credentials are provided
+if (process.env.CLOUDINARY_CLOUD_NAME && 
+    process.env.CLOUDINARY_API_KEY && 
+    process.env.CLOUDINARY_API_SECRET) {
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET
+    });
+}
+
+const useCloudinary = process.env.USE_CLOUDINARY === 'true';
+
+// Helper function to upload files to Cloudinary
+const uploadToCloudinary = async (file) => {
+    if (!useCloudinary) return null;
+    
+    try {
+        const result = await cloudinary.uploader.upload(file.path, {
+            folder: 'products'
+        });
+        return {
+            url: result.secure_url,
+            publicId: result.public_id
+        };
+    } catch (error) {
+        console.error('Error uploading to Cloudinary:', error);
+        return null;
+    }
+};
+
+// Helper function to delete from Cloudinary
+const deleteFromCloudinary = async (publicId) => {
+    if (!useCloudinary || !publicId) return;
+    
+    try {
+        await cloudinary.uploader.destroy(publicId);
+    } catch (error) {
+        console.error('Error deleting from Cloudinary:', error);
+    }
+};
 
 // Create new product
 const createProduct = async (req, res) => {
     try {
         const {
             name,
+            description,
             price,
-            stock,
+            stock = 0,
             category,
-            images = [],
-            isFeatured = false
+            isFeatured = false,
+            discount = 0,
+            specifications = {}
         } = req.body;
+
+        // Handle file uploads
+        let imageUrls = [];
+        
+        if (req.files && req.files.length > 0) {
+            // Upload each file to Cloudinary
+            const uploadPromises = req.files.map(file => {
+                return new Promise((resolve, reject) => {
+                    cloudinary.uploader.upload(file.path, 
+                        { folder: 'products' }, 
+                        (error, result) => {
+                            // Delete file from server after upload
+                            fs.unlinkSync(file.path);
+                            
+                            if (error) {
+                                console.error('Error uploading to Cloudinary:', error);
+                                reject(error);
+                            } else {
+                                resolve({
+                                    url: result.secure_url,
+                                    publicId: result.public_id
+                                });
+                            }
+                        }
+                    );
+                });
+            });
+
+            // Wait for all uploads to complete
+            const uploadResults = await Promise.all(uploadPromises);
+            imageUrls = uploadResults.map(result => ({
+                url: result.url,
+                publicId: result.publicId
+            }));
+        } else if (req.body.images && Array.isArray(req.body.images)) {
+            // If images are provided as URLs (for testing or manual entry)
+            imageUrls = req.body.images.map(url => ({
+                url,
+                publicId: null
+            }));
+        }
 
         const product = new Product({
             name,
-            price,
-            stock,
+            description,
+            price: parseFloat(price),
+            stock: parseInt(stock),
             category,
-            images,
-            isFeatured,
+            images: imageUrls,
+            isFeatured: isFeatured === 'true' || isFeatured === true,
+            discount: parseFloat(discount),
+            specifications: typeof specifications === 'string' ? JSON.parse(specifications) : specifications,
             createdBy: req.user.id
         });
 
@@ -26,7 +126,8 @@ const createProduct = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            product
+            message: 'Product created successfully',
+            data: product
         });
     } catch (error) {
         console.error('Error creating product:', error);
