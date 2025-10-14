@@ -20,6 +20,7 @@ import {
   getSettings,
   updateSettings
 } from '../controllers/adminController.js';
+import { uploadProductImages } from '../middleware/upload.js';
 import {
   getProducts,
   createProduct,
@@ -51,7 +52,13 @@ router.delete('/users/:id', authenticate, authorize('admin'), deleteUser);
 
 // Product management routes
 router.get('/products', authenticate, authorize('admin'), getProducts);
-router.post('/products', authenticate, authorize('admin'), createProduct);
+router.post(
+  '/products',
+  authenticate,
+  authorize('admin'),
+  uploadProductImages,
+  createProduct
+);
 router.get('/products/:id', authenticate, authorize('admin'), getProduct);
 router.put('/products/:id', authenticate, authorize('admin'), updateProduct);
 router.delete('/products/:id', authenticate, authorize('admin'), deleteProduct);
