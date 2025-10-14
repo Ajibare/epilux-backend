@@ -130,10 +130,10 @@ const config = {
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
 
   // CORS & Frontend URLs
-  CORS_ORIGIN: (process.env.CORS_ORIGIN || 'https://epilux48.vercel.app')
+  CORS_ORIGIN: (process.env.CORS_ORIGIN || 'https://www.epilux.com.ng' || 'https://epilux48.vercel.app')
     .split(',')
     .map(origin => origin.trim()),
-  FRONTEND_URL: process.env.FRONTEND_URL || 'https://epilux48.vercel.app',
+  FRONTEND_URL: process.env.FRONTEND_URL || 'https://www.epilux.com.ng' || 'https://epilux48.vercel.app',
 
   // Email configuration (merged legacy + new)
   EMAIL_CONFIG: {

@@ -12,6 +12,7 @@ const PORT = config.PORT;
 
 // ✅ Allowed CORS origins
 const allowedOrigins = [
+  'https://www.epilux.com.ng',
   'https://epilux48.vercel.app',
   'http://localhost:3000',
   'http://localhost:5173',

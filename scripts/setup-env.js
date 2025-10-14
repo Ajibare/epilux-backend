@@ -90,7 +90,7 @@ MONGODB_URI=mongodb+srv://ajibarebabajide1_db_user:epilux@epilux.qrmkv4r.mongodb
 JWT_SECRET=${generateRandomString(64)}
 JWT_EXPIRE=7d
 JWT_REFRESH_EXPIRE=30d
-CORS_ORIGIN=https://epilux48.vercel.app
+CORS_ORIGIN= https://www.epilux.com.ng
 
 # Email Configuration
 EMAIL_SERVICE=gmail
