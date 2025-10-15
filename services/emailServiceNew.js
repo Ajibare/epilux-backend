@@ -50,45 +50,45 @@ class EmailService {
         }
     }
 
-    async sendEmail(to, subject, templateName, data = {}) {
-        const template = this.templates[templateName];
-        if (!template) {
-            throw new Error(`Template ${templateName} not found`);
-        }
+    // async sendEmail(to, subject, templateName, data = {}) {
+    //     const template = this.templates[templateName];
+    //     if (!template) {
+    //         throw new Error(`Template ${templateName} not found`);
+    //     }
 
-        const html = template({
-            ...data,
-            appName: config.APP_NAME,
-            logoUrl: config.LOGO_URL,
-            frontendUrl: config.FRONTEND_URL,
-            currentYear: new Date().getFullYear()
-        });
+    //     const html = template({
+    //         ...data,
+    //         appName: config.APP_NAME,
+    //         logoUrl: config.LOGO_URL,
+    //         frontendUrl: config.FRONTEND_URL,
+    //         currentYear: new Date().getFullYear()
+    //     });
 
-        const mailOptions = {
-            from: config.EMAIL_FROM || `"${config.APP_NAME}" <${config.SMTP_USER}>`,
-            to,
-            subject,
-            html
-        };
+    //     const mailOptions = {
+    //         from: config.EMAIL_FROM || `"${config.APP_NAME}" <${config.SMTP_USER}>`,
+    //         to,
+    //         subject,
+    //         html
+    //     };
 
-        if (!this.isConfigured) {
-            console.log('--- MOCK EMAIL ---');
-            console.log('To:', to);
-            console.log('Subject:', subject);
-            console.log('Template:', templateName);
-            console.log('Data:', JSON.stringify(data, null, 2));
-            console.log('--- End Mock Email ---');
-            return true;
-        }
+    //     if (!this.isConfigured) {
+    //         console.log('--- MOCK EMAIL ---');
+    //         console.log('To:', to);
+    //         console.log('Subject:', subject);
+    //         console.log('Template:', templateName);
+    //         console.log('Data:', JSON.stringify(data, null, 2));
+    //         console.log('--- End Mock Email ---');
+    //         return true;
+    //     }
 
-        try {
-            await this.transporter.sendMail(mailOptions);
-            return true;
-        } catch (error) {
-            console.error('Error sending email:', error);
-            return false;
-        }
-    }
+    //     try {
+    //         await this.transporter.sendMail(mailOptions);
+    //         return true;
+    //     } catch (error) {
+    //         console.error('Error sending email:', error);
+    //         return false;
+    //     }
+    // }
 
     // Specific email methods
     async sendPasswordResetEmail(user, resetToken) {

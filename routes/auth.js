@@ -509,7 +509,8 @@ router.put('/api/auth/password', validatePasswordUpdate, handleValidationErrors,
         console.error('Change password error:', error);
         res.status(500).json({
             success: false,
-            message: 'Internal server error during password change'
+            message: 'Internal server error during password change',
+            error: error.message
         });
     }
 });

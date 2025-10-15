@@ -30,14 +30,14 @@ export const changePassword = async (req, res) => {
       await user.save();
 
       // Send confirmation email
-      await sendEmail({
-          to: user.email,
-          subject: 'Password Changed',
-          template: 'password-changed',
-          context: {
-              name: user.firstName
-          }
-      });
+    //   await sendEmail({
+    //       to: user.email,
+    //       subject: 'Password Changed',
+    //       template: 'password-changed',
+    //       context: {
+    //           name: user.firstName
+    //       }
+    //   });
 
       res.json({
           success: true,
