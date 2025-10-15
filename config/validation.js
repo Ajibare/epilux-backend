@@ -220,6 +220,110 @@ const validatePasswordUpdate = [
         })
 ];
 
+
+// Validation rules for product creation
+const validateProductCreation = [
+    body('name')
+        .trim()
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Product name must be between 1 and 100 characters'),
+    
+    body('description')
+        .trim()
+        .isLength({ min: 1, max: 1000 })
+        .withMessage('Product description must be between 1 and 1000 characters'),
+    
+    body('price')
+        .isFloat({ min: 0 })
+        .withMessage('Price must be a positive number'),
+    
+    body('category')
+        .trim()
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Category must be between 1 and 50 characters'),
+    
+    body('brand')
+        .trim()
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Brand is required and must be between 1 and 50 characters'),
+    
+    body('stock')
+        .isInt({ min: 0 })
+        .withMessage('Stock must be a non-negative integer'),
+    
+    body('images')
+        .optional()
+        .isArray()
+        .withMessage('Images must be an array'),
+    
+    body('images.*')
+        .optional()
+        .isString()
+        .withMessage('Each image must be a string (URL or base64)'),
+    
+    body('isFeatured')
+        .optional()
+        .isBoolean()
+        .withMessage('isFeatured must be a boolean')
+];
+
+// Validation rules for product update
+const validateProductUpdate = [
+    body('name')
+        .optional()
+        .trim()
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Product name must be between 1 and 100 characters'),
+    
+    body('description')
+        .optional()
+        .trim()
+        .isLength({ min: 1, max: 1000 })
+        .withMessage('Product description must be between 1 and 1000 characters'),
+    
+    body('price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Price must be a positive number'),
+    
+    body('category')
+        .optional()
+        .trim()
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Category must be between 1 and 50 characters'),
+    
+    body('brand')
+        .optional()
+        .trim()
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Brand must be between 1 and 50 characters'),
+    
+    body('stock')
+        .optional()
+        .isInt({ min: 0 })
+        .withMessage('Stock must be a non-negative integer'),
+    
+    body('images')
+        .optional()
+        .isArray()
+        .withMessage('Images must be an array'),
+    
+    body('images.*')
+        .optional()
+        .isString()
+        .withMessage('Each image must be a string (URL or base64)'),
+    
+    body('isFeatured')
+        .optional()
+        .isBoolean()
+        .withMessage('isFeatured must be a boolean'),
+    
+    body('isActive')
+        .optional()
+        .isBoolean()
+        .withMessage('isActive must be a boolean')
+];
+
 // Export all functions
 export {
     validateConfig,
@@ -232,5 +336,7 @@ export {
     validateProfileUpdate,
     validateForgotPassword,
     validateResetPassword,
-    validatePasswordChange
+    validatePasswordChange,
+    validateProductUpdate,
+    validateProductCreation
 };

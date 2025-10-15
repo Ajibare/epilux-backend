@@ -119,8 +119,6 @@ router.post(
                 brand: req.body.brand,
                 images: images,
                 isFeatured: req.body.isFeatured === 'true' || req.body.isFeatured === true,
-                discount: parseFloat(req.body.discount) || 0,
-                specifications: specifications,
                 createdBy: req.user.id
             });
 
