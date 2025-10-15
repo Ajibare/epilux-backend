@@ -66,9 +66,9 @@ router.get('/products/categories', authenticate, authorize('admin'), getCategori
 
 // Order management routes
 router.get('/orders', authenticate, authorize('admin'), getOrders);
+router.get('/orders/stats', authenticate, authorize('admin'), getOrderStats);
 router.get('/orders/:id', authenticate, authorize('admin'), getOrder);
 router.put('/orders/:id/status', authenticate, authorize('admin'), updateOrderStatus);
-router.get('/orders/stats', authenticate, authorize('admin'), getOrderStats);
 
 // Affiliate management routes
 router.get('/affiliates', authenticate, authorize('admin'), getAffiliates);

@@ -54,3 +54,32 @@ export const exportUserData = async (req, res, next) => {
         next(error);
     }
 };
+
+
+
+// Update user address
+export const updateAddress = async (req, res, next) => {
+    try {
+        const { street, city, state, postalCode, country, phone } = req.body;
+        
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { 
+                address: { street, city, state, postalCode, country, phone },
+                updatedAt: Date.now()
+            },
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: user
+        });
+    } catch (error) {
+        next(error);
+    }
+};

@@ -1,7 +1,7 @@
 // server/routes/users.js
 import express from 'express';
 import { authenticate as protect } from '../middleware/auth.js';
-import { deleteUser, exportUserData } from '../controllers/userController.js';
+import { deleteUser, exportUserData, updateAddress } from '../controllers/userController.js';
 
 const router = express.Router();
 
@@ -15,4 +15,11 @@ router.delete('/me', protect, deleteUser);
 // @access  Private
 router.get('/me/export', protect, exportUserData);
 
+// @route   PUT /api/users/me/address
+// @desc    Update user address
+// @access  Private
+router.put('/me/address', protect, updateAddress);
+
 export default router;
+
+
