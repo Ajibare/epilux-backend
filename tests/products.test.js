@@ -151,12 +151,12 @@ describe('Products API', () => {
       
       const productData = {
         name: 'New Product',
-        description: 'A new product',
-        price: 149.99,
-        sku: 'NEW-001',
-        category: 'Electronics',
         brand: 'NewBrand',
-        inventory: { quantity: 25 }
+        category: 'Electronics',
+        description: 'A new product',
+        images: [''],
+        price: 149.99,
+        stock: 25
       };
 
       try {

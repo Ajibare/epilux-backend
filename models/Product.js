@@ -16,14 +16,10 @@ const productSchema = new Schema({
         required: true,
         min: 0
     },
-    comparePrice: {
-        type: Number,
-        min: 0
-    },
     sku: {
         type: String,
-        required: true,
-        unique: true
+        unique: true,
+        sparse: true
     },
     category: {
         type: String,
@@ -33,38 +29,7 @@ const productSchema = new Schema({
         type: String,
         required: true
     },
-    images: [{
-        url: String,
-        alt: String,
-        isPrimary: {
-            type: Boolean,
-            default: false
-        }
-    }],
-    inventory: {
-        quantity: {
-            type: Number,
-            required: true,
-            min: 0,
-            default: 0
-        },
-        lowStockThreshold: {
-            type: Number,
-            default: 10
-        },
-        allowBackorder: {
-            type: Boolean,
-            default: false
-        }
-    },
-    variants: [{
-        name: String,
-        value: String,
-        price: Number,
-        sku: String,
-        inventory: Number
-    }],
-    tags: [String],
+    images: [String],
     isActive: {
         type: Boolean,
         default: true
@@ -72,20 +37,6 @@ const productSchema = new Schema({
     isFeatured: {
         type: Boolean,
         default: false
-    },
-    weight: {
-        type: Number,
-        min: 0
-    },
-    dimensions: {
-        length: Number,
-        width: Number,
-        height: Number
-    },
-    seo: {
-        metaTitle: String,
-        metaDescription: String,
-        keywords: [String]
     },
     createdAt: {
         type: Date,
