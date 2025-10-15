@@ -248,12 +248,170 @@ const getRecentSignups = async (limit = 5) => {
 /**
  * Get admin dashboard statistics
  */
+// const getDashboardStats = async (req, res) => {
+//   try {
+//     const now = new Date();
+//     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+//     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+//     // const twoMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+
+//     // Current period data
+//     const [
+//       totalUsers,
+//       totalProducts,
+//       totalOrders,
+//       totalRevenue,
+//       monthlyRevenue,
+//       pendingOrders,
+//       completedOrders,
+//       lowStockProducts,
+//       activeAffiliates,
+//       // Previous period data for comparison
+//       lastMonthOrders,
+//       lastMonthRevenue,
+//       lastMonthAffiliates,
+//       lastMonthPendingOrders
+//     ] = await Promise.all([
+//       // Current period
+//       User.countDocuments(),
+//       Product.countDocuments(),
+//       Order.countDocuments(),
+//       Order.aggregate([
+//         { $match: { status: 'completed' } },
+//         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+//       ]),
+//       Order.aggregate([
+//         { 
+//           $match: { 
+//             status: 'completed',
+//             createdAt: { $gte: currentMonthStart }
+//           }
+//         },
+//         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+//       ]),
+//       Order.countDocuments({ status: 'pending' }),
+//       Order.countDocuments({ status: 'completed' }),
+//           // Updated to use the new stock field
+//       Product.countDocuments({ stock: { $lt: 10 } }),
+//       User.countDocuments({ role: 'affiliate', isActive: true }),
+      
+//       // Previous period data
+//       Order.countDocuments({ 
+//         createdAt: { 
+//           $gte: lastMonthStart,
+//           $lt: currentMonthStart
+//         }
+//       }),
+//       Order.aggregate([
+//         { 
+//           $match: { 
+//             status: 'completed',
+//             createdAt: { 
+//               $gte: lastMonthStart,
+//               $lt: currentMonthStart
+//             }
+//           } 
+//         },
+//         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+//       ]),
+//       User.countDocuments({ 
+//         role: 'affiliate',
+//         isActive: true,
+//         createdAt: { $lt: currentMonthStart }
+//       }),
+//       Order.countDocuments({ 
+//         status: 'pending',
+//         createdAt: { 
+//           $gte: lastMonthStart,
+//           $lt: currentMonthStart
+//         }
+//       })
+//     ]);
+
+//     // Calculate percentage changes
+//     const calculateChange = (current, previous) => {
+//       if (!previous || previous === 0) return 0;
+//       return Math.round(((current - previous) / previous) * 100);
+//     };
+
+//     // Get additional data in parallel
+//     const [recentUsers, topProducts, recentActivities, salesTrend, userAcquisition, customerRetention] = await Promise.all([
+//       User.find()
+//         .sort({ createdAt: -1 })
+//         .limit(5)
+//         .select('-password')
+//         .lean(),
+//       getTopSellingProducts(5),
+//       Promise.all([
+//         getRecentOrders(3),
+//         getRecentSignups(3),
+//         getRecentAffiliateActivity(4)
+//       ]).then(results => results.flat().sort((a, b) => new Date(b.timestamp || b.createdAt) - new Date(a.timestamp || a.createdAt)).slice(0, 10)),
+//       getSalesTrend(30),
+//       getUserAcquisition(90),
+//       calculateCustomerRetention()
+//     ]);
+
+//     // Extract values from aggregations
+//     const currentRevenue = totalRevenue[0]?.total || 0;
+//     const currentMonthlyRevenue = monthlyRevenue[0]?.total || 0;
+//     const lastMonthRev = lastMonthRevenue[0]?.total || 0;
+
+//     // Prepare response
+//     const stats = {
+//       overview: {
+//         // Main metrics
+//         totalOrders,
+//         totalRevenue: currentRevenue,
+//         monthlyRevenue: currentMonthlyRevenue,
+//         pendingOrders,
+//         completedOrders,
+//         totalUsers,
+//         totalProducts,
+//         lowStockProducts,
+//         activeAffiliates,
+        
+//         // Percentage changes
+//         changes: {
+//           totalOrders: calculateChange(totalOrders, lastMonthOrders),
+//           totalRevenue: calculateChange(currentRevenue, lastMonthRev),
+//           pendingOrders: calculateChange(pendingOrders, lastMonthPendingOrders),
+//           activeAffiliates: calculateChange(activeAffiliates, lastMonthAffiliates)
+//         }
+//       },
+//       analytics: {
+//         topSellingProducts: topProducts,
+//         salesTrend,
+//         userAcquisition,
+//         customerRetention
+//       },
+//       recent: {
+//         users: recentUsers,
+//         activity: recentActivities
+//       }
+//     };
+
+//     res.status(200).json({
+//       success: true,
+//       data: stats
+//     });
+//   } catch (error) {
+//     console.error('Error getting dashboard stats:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching dashboard statistics',
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
 const getDashboardStats = async (req, res) => {
   try {
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const twoMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
 
     // Current period data
     const [
@@ -291,6 +449,7 @@ const getDashboardStats = async (req, res) => {
       ]),
       Order.countDocuments({ status: 'pending' }),
       Order.countDocuments({ status: 'completed' }),
+      // Updated to use the new stock field
       Product.countDocuments({ stock: { $lt: 10 } }),
       User.countDocuments({ role: 'affiliate', isActive: true }),
       
@@ -334,21 +493,18 @@ const getDashboardStats = async (req, res) => {
     };
 
     // Get additional data in parallel
-    const [recentUsers, topProducts, recentActivities, salesTrend, userAcquisition, customerRetention] = await Promise.all([
+    const [recentUsers, recentActivities] = await Promise.all([
       User.find()
         .sort({ createdAt: -1 })
         .limit(5)
         .select('-password')
         .lean(),
-      getTopSellingProducts(5),
-      Promise.all([
-        getRecentOrders(3),
-        getRecentSignups(3),
-        getRecentAffiliateActivity(4)
-      ]).then(results => results.flat().sort((a, b) => new Date(b.timestamp || b.createdAt) - new Date(a.timestamp || a.createdAt)).slice(0, 10)),
-      getSalesTrend(30),
-      getUserAcquisition(90),
-      calculateCustomerRetention()
+      // Simplified to just get recent orders
+      Order.find()
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate('user', 'firstName lastName email')
+        .lean()
     ]);
 
     // Extract values from aggregations
@@ -377,12 +533,6 @@ const getDashboardStats = async (req, res) => {
           pendingOrders: calculateChange(pendingOrders, lastMonthPendingOrders),
           activeAffiliates: calculateChange(activeAffiliates, lastMonthAffiliates)
         }
-      },
-      analytics: {
-        topSellingProducts: topProducts,
-        salesTrend,
-        userAcquisition,
-        customerRetention
       },
       recent: {
         users: recentUsers,

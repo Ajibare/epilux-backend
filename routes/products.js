@@ -212,7 +212,7 @@ router.put(
             // Parse numeric fields
             if (updateData.price) updateData.price = parseFloat(updateData.price);
             if (updateData.stock) updateData.stock = parseInt(updateData.stock);
-            if (updateData.discount) updateData.discount = parseFloat(updateData.discount);
+            // if (updateData.discount) updateData.discount = parseFloat(updateData.discount);
             if (updateData.isFeatured) {
                 updateData.isFeatured = updateData.isFeatured === 'true' || updateData.isFeatured === true;
             }
