@@ -19,7 +19,8 @@ const productSchema = new Schema({
     sku: {
         type: String,
         unique: true,
-        sparse: true
+        sparse: true,
+        required: false
     },
     category: {
         type: String,
@@ -27,7 +28,7 @@ const productSchema = new Schema({
     },
     brand: {
         type: String,
-        required: true
+        required: false
     },
     images: [String],
     isActive: {
