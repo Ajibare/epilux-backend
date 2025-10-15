@@ -83,3 +83,65 @@ export const updateAddress = async (req, res, next) => {
         next(error);
     }
 };
+
+
+
+
+// @desc    Get logged in user profile
+// @route   GET /api/users/me
+// @access  Private
+export const getProfile = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        res.status(200).json({
+            success: true,
+            data: user
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/users/me
+// @access  Private
+export const updateProfile = async (req, res, next) => {
+    try {
+        const { firstName, lastName, phone } = req.body;
+        
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { 
+                firstName,
+                lastName,
+                phone,
+                updatedAt: Date.now()
+            },
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        res.status(200).json({
+            success: true,
+            data: user
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+
+// @desc    Get user address
+// @route   GET /api/users/me/address
+// @access  Private
+export const getAddress = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).select('address');
+        res.status(200).json({
+            success: true,
+            data: user.address || {}
+        });
+    } catch (error) {
+        next(error);
+    }
+};
