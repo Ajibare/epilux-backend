@@ -1,4 +1,5 @@
 // In authController.js
+import User from '../models/User.js';
 
 // Change password
 export const changePassword = async (req, res) => {
