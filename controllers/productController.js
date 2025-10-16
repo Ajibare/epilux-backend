@@ -530,3 +530,129 @@ export const updateProduct = async (req, res) => {
     });
   }
 };
+
+// Get all products
+export const getProducts = async (req, res) => {
+  try {
+    const products = await Product.find({ isActive: true })
+      .select('name description price stock images isFeatured category brand primaryImage')
+      .lean();
+
+    res.json({
+      success: true,
+      data: products.map(p => ({
+        ...p,
+        stock: p.stock || 0,
+        isInStock: (p.stock || 0) > 0,
+        primaryImage: p.primaryImage || (p.images?.find(i => i.isPrimary)?.url || p.images?.[0]?.url || null)
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching products',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Get single product
+export const getProduct = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id)
+      .select('name description price stock images isFeatured isInStock category brand primaryImage')
+      .lean();
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...product,
+        stock: product.stock || 0,
+        isInStock: (product.stock || 0) > 0,
+        primaryImage: product.primaryImage || 
+                     (product.images?.find(img => img.isPrimary)?.url || 
+                      product.images?.[0]?.url || null)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching product',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Delete product
+export const deleteProduct = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    // Delete images from Cloudinary if they exist
+    if (product.images && product.images.length > 0) {
+      const deletePromises = product.images
+        .filter(img => img.publicId)
+        .map(img => cloudinary.uploader.destroy(img.publicId));
+      
+      await Promise.all(deletePromises);
+    }
+
+    await Product.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Product deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting product',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Get product categories
+export const getCategories = async (req, res) => {
+  try {
+    const categories = await Product.distinct('category', { isActive: true });
+    res.json({
+      success: true,
+      data: categories
+    });
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching categories',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Export all controller functions
+// export {
+//   createProduct,
+//   getProducts,
+//   getProduct,
+//   updateProduct,
+//   deleteProduct,
+// //   getCategories
+// };
