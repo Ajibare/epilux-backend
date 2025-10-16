@@ -25,8 +25,6 @@ router.get('/me/export', protect, exportUserData);
 // @access  Private
 router.put('/me/address', protect, updateAddress);
 
-
-
 // @route   GET /api/users/me
 // @desc    Get logged in user profile
 // @access  Private
