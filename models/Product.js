@@ -30,7 +30,24 @@ const productSchema = new Schema({
         type: String,
         required: false
     },
-    images: [String],
+    images: [{
+        url: {
+            type: String,
+            required: true
+        },
+        publicId: String,
+        isPrimary: {
+            type: Boolean,
+            default: false
+        },
+        altText: String
+    }],
+    stock: {
+        type: Number,
+        required: true,
+        default: 0,
+        min: 0
+    },
     isActive: {
         type: Boolean,
         default: true
@@ -38,6 +55,10 @@ const productSchema = new Schema({
     isFeatured: {
         type: Boolean,
         default: false
+    },
+    isInStock: {
+        type: Boolean,
+        default: true
     },
     createdAt: {
         type: Date,

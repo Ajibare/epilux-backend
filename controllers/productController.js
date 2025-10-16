@@ -195,10 +195,12 @@ const getProducts = async (req, res) => {
     }
 };
 
-// Get single product
+// Get single product with stock and images
 const getProduct = async (req, res) => {
     try {
-        const product = await Product.findById(req.params.id);
+        const product = await Product.findById(req.params.id)
+            .select('name description price stock images isActive isFeatured isInStock category brand')
+            .lean();
         
         if (!product) {
             return res.status(404).json({
@@ -207,15 +209,26 @@ const getProduct = async (req, res) => {
             });
         }
 
-        res.json({
+        // Format the response
+        const response = {
             success: true,
-            product
-        });
+            data: {
+                ...product,
+                stock: product.stock || 0,
+                isInStock: product.stock > 0,
+                images: product.images || [],
+                primaryImage: product.images?.find(img => img.isPrimary)?.url || 
+                             (product.images?.length > 0 ? product.images[0].url : null)
+            }
+        };
+
+        res.json(response);
     } catch (error) {
         console.error('Error fetching product:', error);
         res.status(500).json({
             success: false,
-            message: 'Error fetching product'
+            message: 'Error fetching product',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };

@@ -27,17 +27,10 @@ const validateConfig = () => {
     }
     
     // Validate CORS origin
-    // if (config.CORS_ORIGIN && !config.CORS_ORIGIN.startsWith('http')) {
-    //     errors.push('CORS_ORIGIN must be a valid URL starting with http');
-    // }
     if (config.CORS_ORIGIN && typeof config.CORS_ORIGIN === 'string' && !config.CORS_ORIGIN.startsWith('http')) {
         errors.push('CORS_ORIGIN must be a valid URL starting with http');
     }
-    // if (config.CORS_ORIGIN && typeof config.CORS_ORIGIN === 'string' && !config.CORS_ORIGIN.startsWith('http')) {
-    //     errors.push('CORS_ORIGIN must be a valid URL starting with http');
-    // }
-    
-    
+        
     // Validate file size
     if (config.MAX_FILE_SIZE < 1024 || config.MAX_FILE_SIZE > 50 * 1024 * 1024) {
         errors.push('MAX_FILE_SIZE must be between 1KB and 50MB');
