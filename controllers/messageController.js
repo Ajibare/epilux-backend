@@ -119,33 +119,78 @@ const replyToMessage = async (req, res) => {
 };
 
 // Get messages for the current user
+// const getUserMessages = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { limit = 10, page = 1 } = req.query;
+
+//     const options = {
+//       page: parseInt(page, 10),
+//       limit: parseInt(limit, 10),
+//       sort: { createdAt: -1 },
+//       populate: [
+//         { path: 'sender', select: 'firstName lastName email' },
+//         { path: 'recipient', select: 'firstName lastName email' }
+//       ]
+//     };
+
+//     const query = {
+//       $or: [
+//         { sender: userId },
+//         { recipient: userId }
+//       ]
+//     };
+
+//     const messages = await Message.paginate(query, options);
+
+//     res.json({
+//       success: true,
+//       data: messages
+//     });
+//   } catch (error) {
+//     console.error('Error fetching messages:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching messages',
+//       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//     });
+//   }
+// };
+
+// Get messages for the current user (without paginate)
 const getUserMessages = async (req, res) => {
   try {
     const userId = req.user.id;
     const { limit = 10, page = 1 } = req.query;
 
-    const options = {
-      page: parseInt(page, 10),
-      limit: parseInt(limit, 10),
-      sort: { createdAt: -1 },
-      populate: [
-        { path: 'sender', select: 'firstName lastName email' },
-        { path: 'recipient', select: 'firstName lastName email' }
-      ]
-    };
+    const perPage = parseInt(limit, 10);
+    const currentPage = parseInt(page, 10);
+    const skip = (currentPage - 1) * perPage;
 
+    // Query for messages where the user is either sender or recipient
     const query = {
-      $or: [
-        { sender: userId },
-        { recipient: userId }
-      ]
+      $or: [{ sender: userId }, { recipient: userId }]
     };
 
-    const messages = await Message.paginate(query, options);
+    // Fetch paginated messages
+    const messages = await Message.find(query)
+      .populate('sender', 'firstName lastName email')
+      .populate('recipient', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(perPage);
 
-    res.json({
+    // Count total number of matching messages
+    const totalMessages = await Message.countDocuments(query);
+
+    res.status(200).json({
       success: true,
-      data: messages
+      data: {
+        messages,
+        totalMessages,
+        totalPages: Math.ceil(totalMessages / perPage),
+        currentPage
+      }
     });
   } catch (error) {
     console.error('Error fetching messages:', error);
@@ -156,6 +201,9 @@ const getUserMessages = async (req, res) => {
     });
   }
 };
+
+
+
 
 // Get unread message count for the current user
 const getUnreadCount = async (req, res) => {
