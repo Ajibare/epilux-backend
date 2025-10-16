@@ -58,26 +58,47 @@ export const exportUserData = async (req, res, next) => {
 
 
 // Update user address
+// @desc    Update user address
+// @route   PUT /api/users/me/address
+// @access  Private
 export const updateAddress = async (req, res, next) => {
     try {
-        const { street, city, state, postalCode, country, phone } = req.body;
+        const { street, city, state, zipCode, country } = req.body;
+        
+        // Basic validation
+        if (!street || !city || !state || !zipCode || !country) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide all required address fields: street, city, state, zipCode, country'
+            });
+        }
         
         const user = await User.findByIdAndUpdate(
             req.user.id,
             { 
-                address: { street, city, state, postalCode, country, phone },
+                'profile.address': { 
+                    street, 
+                    city, 
+                    state, 
+                    zipCode, 
+                    country 
+                },
                 updatedAt: Date.now()
             },
             { new: true, runValidators: true }
         ).select('-password');
 
         if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
+            return res.status(404).json({ 
+                success: false, 
+                message: 'User not found' 
+            });
         }
 
         res.status(200).json({
             success: true,
-            data: user
+            message: 'Address updated successfully',
+            data: user.profile.address || {}
         });
     } catch (error) {
         next(error);
@@ -134,12 +155,22 @@ export const updateProfile = async (req, res, next) => {
 // @desc    Get user address
 // @route   GET /api/users/me/address
 // @access  Private
+// @desc    Get user address
+// @route   GET /api/users/me/address
+// @access  Private
 export const getAddress = async (req, res, next) => {
     try {
-        const user = await User.findById(req.user.id).select('address');
+        const user = await User.findById(req.user.id).select('profile.address');
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
         res.status(200).json({
             success: true,
-            data: user.address || {}
+            data: user.profile?.address || {}
         });
     } catch (error) {
         next(error);
