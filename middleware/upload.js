@@ -3,29 +3,21 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import fs from 'fs';
-import { v2 as cloudinary } from 'cloudinary';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
+// Define uploads directory
+const uploadDir = path.join(process.cwd(), 'public', 'uploads');
 
-// // Define uploads directory
-// const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-
-// // Ensure uploads directory exists
-// const ensureUploadsDir = () => {
-//     if (!fs.existsSync(uploadDir)) {
-//         fs.mkdirSync(uploadDir, { recursive: true });
-//     }
-//     return uploadDir;
-// };
+// Ensure uploads directory exists
+const ensureUploadsDir = () => {
+    if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    return uploadDir;
+};
 
 // Configure storage
 const storage = multer.diskStorage({
