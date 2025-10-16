@@ -62,14 +62,17 @@ const createProduct = async (req, res) => {
         } = req.body;
 
         // Handle file uploads
-        let imageUrls = [];
+        let images = [];
         
         if (req.files && req.files.length > 0) {
             // Upload each file to Cloudinary
-            const uploadPromises = req.files.map(file => {
+            const uploadPromises = req.files.map((file, index) => {
                 return new Promise((resolve, reject) => {
                     cloudinary.uploader.upload(file.path, 
-                        { folder: 'products' }, 
+                        { 
+                            folder: 'products',
+                            resource_type: 'auto' 
+                        }, 
                         (error, result) => {
                             // Delete file from server after upload
                             fs.unlinkSync(file.path);
@@ -80,7 +83,9 @@ const createProduct = async (req, res) => {
                             } else {
                                 resolve({
                                     url: result.secure_url,
-                                    publicId: result.public_id
+                                    publicId: result.public_id,
+                                    isPrimary: index === 0, // First image is primary by default
+                                    altText: `Image ${index + 1} of ${name}`
                                 });
                             }
                         }
@@ -89,31 +94,32 @@ const createProduct = async (req, res) => {
             });
 
             // Wait for all uploads to complete
-            const uploadResults = await Promise.all(uploadPromises);
-            imageUrls = uploadResults.map(result => ({
-                url: result.url,
-                publicId: result.publicId
-            }));
+            images = await Promise.all(uploadPromises);
         } else if (req.body.images && Array.isArray(req.body.images)) {
             // If images are provided as URLs (for testing or manual entry)
-            imageUrls = req.body.images.map(url => ({
+            images = req.body.images.map((url, index) => ({
                 url,
-                publicId: null
+                publicId: null,
+                isPrimary: index === 0,
+                altText: `Image ${index + 1} of ${name}`
             }));
         }
 
-        const product = new Product({
+        const productData = {
             name,
             description,
             price: parseFloat(price),
-            stock: parseInt(stock),
+            stock: parseInt(stock, 10) || 0,
             category,
-            images: imageUrls,
+            images,
             isFeatured: isFeatured === 'true' || isFeatured === true,
-            discount: parseFloat(discount),
+            discount: parseFloat(discount) || 0,
             specifications: typeof specifications === 'string' ? JSON.parse(specifications) : specifications,
-            createdBy: req.user.id
-        });
+            createdBy: req.user.id,
+            isInStock: parseInt(stock, 10) > 0
+        };
+
+        const product = new Product(productData);
 
         await product.save();
 
