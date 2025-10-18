@@ -192,6 +192,7 @@ class EmailService {
     }
 }
 
+
 const emailService = new EmailService();
 
 // Export both the instance and the class for testing/mocking
@@ -200,4 +201,37 @@ export { emailService as default, EmailService };
 // Export the notification function for direct use
 export const sendNotificationEmail = (options) => {
     return emailService.sendNotificationEmail(options);
+};
+
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: config.EMAIL_USER,
+        pass: config.EMAIL_PASS
+    }
+});
+
+export const sendDeliveryNotification = async (email, orderId, status, message) => {
+    const mailOptions = {
+        from: `"Epilux Support" <${config.EMAIL_USER}>`,
+        to: email,
+        subject: `Order ${orderId} - ${status}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2>Order Update</h2>
+                <p>Your order #${orderId} has been updated:</p>
+                <p><strong>Status:</strong> ${status}</p>
+                <p>${message}</p>
+                <p>Thank you for choosing Epilux!</p>
+                <hr>
+                <p>If you have any questions, please contact our support team.</p>
+            </div>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+    } catch (error) {
+        console.error('Error sending email:', error);
+    }
 };

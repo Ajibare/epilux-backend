@@ -6,6 +6,14 @@ import config from './config/environment.js';
 import User from './models/User.js';
 import { validateConfig } from './config/validation.js';
 import supportRoutes from './routes/support.js';
+import commissionRoutes from './routes/commission.js';
+import deliveryRoutes from './routes/delivery.js';
+import commissionAdminRoutes from './routes/commissionAdmin.js';
+import marketerRoutes from './routes/marketer.js';
+// import commissionAdminRoutes from './routes/commissionAdmin.js';
+// import deliveryRoutes from './routes/delivery.js';
+
+
 
 const app = express();
 const PORT = config.PORT;
@@ -135,6 +143,20 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
+
+app.use('/api/commission', commissionRoutes);
+app.use('/api/deliveries', deliveryRoutes);
+
+
+
+
+// Add this with other route middleware
+app.use('/api/commission', commissionRoutes);
+app.use('/api/commission/admin', commissionAdminRoutes);  // Add this line
+app.use('/api/deliveries', deliveryRoutes);
+app.use('/api/marketer', marketerRoutes);
+app.use('/api/commission/admin', commissionAdminRoutes);
+app.use('/api/delivery', deliveryRoutes);
 
 // ✅ Basic route
 app.get('/', (req, res) => {

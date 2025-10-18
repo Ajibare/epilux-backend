@@ -6,6 +6,14 @@ import config from '../config/environment.js';
 const JWT_SECRET = config.JWT_SECRET;
 const JWT_EXPIRES_IN = config.JWT_EXPIRE;
 
+// Available roles
+export const ROLES = {
+    ADMIN: 'admin',
+    MARKETER: 'marketer',
+    CUSTOMER: 'customer',
+    USER: 'user'
+};
+
 // Generate JWT token
 const generateToken = (userId, role) => {
     return jwt.sign(
@@ -92,6 +100,45 @@ const authorize = (...roles) => {
     };
 };
 
+
+// Admin-specific middleware
+const admin = (req, res, next) => {
+    if (!req.user) {
+        return res.status(401).json({ 
+            success: false, 
+            message: 'Access denied. User not authenticated.' 
+        });
+    }
+
+    if (req.user.role !== ROLES.ADMIN) {
+        return res.status(403).json({ 
+            success: false, 
+            message: 'Access denied. Admin access required.' 
+        });
+    }
+
+    next();
+};
+
+// Marketer-specific middleware
+const marketer = (req, res, next) => {
+    if (!req.user) {
+        return res.status(401).json({ 
+            success: false, 
+            message: 'Access denied. User not authenticated.' 
+        });
+    }
+
+    if (req.user.role !== ROLES.MARKETER && req.user.role !== ROLES.ADMIN) {
+        return res.status(403).json({ 
+            success: false, 
+            message: 'Access denied. Marketer or admin access required.' 
+        });
+    }
+
+    next();
+};
+
 // Optional authentication (doesn't fail if no token)
 const optionalAuth = async (req, res, next) => {
     try {
@@ -118,5 +165,7 @@ export {
     verifyToken,
     authenticate,
     authorize,
-    optionalAuth
+    optionalAuth,
+    marketer,
+    admin
 };

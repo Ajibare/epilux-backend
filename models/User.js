@@ -76,8 +76,96 @@ const userSchema = new Schema({
             type: Number,
             default: 0
         }
-    }
-});
+    },
+
+    // New fields
+    referredBy: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
+    // ... rest of your existing fields ...
+    affiliateInfo: {
+        affiliateCode: String,
+        // removed referredBy from here as it's now a top-level field
+        commissionRate: {
+            type: Number,
+            default: 0
+        },
+        totalEarnings: {
+            type: Number,
+            default: 0
+        }
+    },
+    // New commission balance fields
+    commissionBalance: {
+        pending: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        available: {
+            type: Number,
+            default: 0,
+            min: 0
+        }
+    },
+    // New stats field
+    stats: {
+        totalReferralEarnings: {
+            type: Number,
+            default: 0,
+            min: 0
+        }
+    },
+        referredBy: {
+        user: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+            default: null
+        },
+        date: {
+            type: Date,
+            default: null
+        },
+        commissionShareActive: {
+            type: Boolean,
+            default: false
+        }
+    }, 
+    // In User model, update the commissionBalance schema:
+    commissionBalance: {
+        available: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        pendingWithdrawal: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        totalWithdrawn: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        lastWithdrawalDate: Date
+    },
+     rating: {
+        type: Number,
+        default: 0
+    },
+    totalRatings: {
+        type: Number,
+        default: 0
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    },
+},
+{ timestamps: true });
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
@@ -106,4 +194,15 @@ userSchema.pre('findOneAndUpdate', function(next) {
 userSchema.methods.comparePassword = async function(enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
+
+
+// Generate affiliate code if user is an affiliate
+userSchema.pre('save', function(next) {
+    if (this.role === 'affiliate' && !this.affiliateInfo.affiliateCode) {
+        this.affiliateInfo.affiliateCode = `AFF${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
+    }
+    next();
+});
+
+
 export default model('User', userSchema);

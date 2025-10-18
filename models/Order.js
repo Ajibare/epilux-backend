@@ -109,8 +109,85 @@ const orderSchema = new Schema({
     updatedAt: {
         type: Date,
         default: Date.now
-    }
-});
+    },
+    buyer: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+    marketer: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+    items: [{
+        product: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Product',
+            required: true
+        },
+        quantity: {
+            type: Number,
+            required: true,
+            min: 1
+        },
+        price: {
+            type: Number,
+            required: true
+        }
+    }],
+    totalAmount: {
+        type: Number,
+        required: true
+    },
+    commissionRate: {
+        type: Number,
+        required: true
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'],
+        default: 'pending'
+    },
+    deliveryProof: {
+        type: String, // URL to delivery proof image
+        default: null
+    },
+    markedDeliveredAt: {
+        type: Date,
+        default: null
+    },
+    confirmedAt: {
+        type: Date,
+        default: null
+    },
+    commissionProcessed: {
+        type: Boolean,
+        default: false
+    },
+       tracking: {
+        statusUpdates: [{
+            status: String,
+            location: String,
+            timestamp: { type: Date, default: Date.now },
+            notes: String
+        }],
+        currentLocation: {
+            type: { type: String, default: 'Point' },
+            coordinates: [Number], // [longitude, latitude]
+            address: String,
+            lastUpdated: Date
+        },
+        estimatedDelivery: Date,
+        deliveryAgent: {
+            name: String,
+            contact: String,
+            company: String
+        }
+    },
+},
+ { timestamps: true });
+
 
 // Update timestamp on update
 orderSchema.pre('findOneAndUpdate', function(next) {

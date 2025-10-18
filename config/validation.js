@@ -172,7 +172,12 @@ const validateRegistration = [
     body('lastName')
         .notEmpty().withMessage('Last name is required')
         .trim()
-        .isLength({ min: 2 }).withMessage('Last name must be at least 2 characters')
+        .isLength({ min: 2 }).withMessage('Last name must be at least 2 characters'),
+    body('referralCode')
+        .optional()
+        .isString()
+        .trim()
+        .escape(),
 ];
 
 // Login validation

@@ -1,5 +1,6 @@
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
+import CommissionService from '../services/commissionService.js';
 
 // Create new order
 const createOrder = async (req, res) => {
@@ -50,6 +51,23 @@ const createOrder = async (req, res) => {
             });
 
             await order.save({ session });
+            
+            // Process commission after successful order creation
+            if (req.user.id) {
+                try {
+                    await CommissionService.processSaleCommission({
+                        buyerId: req.user.id,
+                        amount: totalAmount,
+                        productId: items[0]?.product, // Using first product ID, adjust if needed
+                        orderId: order._id
+                    });
+                } catch (commissionError) {
+                    console.error('Error processing commission:', commissionError);
+                    // Don't fail the order if commission processing fails
+                    // Log the error for investigation
+                }
+            }
+            
             await session.commitTransaction();
             session.endSession();
 

@@ -23,6 +23,9 @@ const router = express.Router();
 router.post('/register', validateRegistration, handleValidationErrors, async (req, res) => {
     console.log('=== NEW REGISTRATION REQUEST ===');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
+
+     const session = await User.startSession();
+    session.startTransaction();
     
     try {
         const { email, password, firstName, lastName, role = 'user' } = req.body;
@@ -65,6 +68,21 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
             throw dbError;
         }
 
+
+          // Find referring user if referral code is provided
+        let referringUser = null;
+        if (referralCode) {
+            referringUser = await User.findOne({ 'affiliateInfo.affiliateCode': referralCode }).session(session);
+            if (!referringUser) {
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid referral code'
+                });
+            }
+        }
+
         // Create new user
         console.log('Creating new user:', { 
             email, 
@@ -80,8 +98,17 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
             firstName,
             lastName,
             role,
-            emailVerified: true
+            emailVerified: true,
+            role,
+            ...(referringUser && {
+                referredBy: {
+                    user: referringUser._id,
+                    date: new Date(),
+                    commissionShareActive: true
+                 }
+            })
         });
+        
         
         console.log('User object created, attempting to save...');
 
@@ -93,6 +120,23 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
                 email: user.email,
                 role: user.role
             });
+
+
+              const user = new User(userData);
+            await user.save({ session });
+
+            // Update referring user's stats if applicable
+            if (referringUser) {
+                await User.findByIdAndUpdate(
+                    referringUser._id,
+                    { $inc: { 'stats.totalReferredUsers': 1 } },
+                    { session }
+                );
+            }
+
+            await session.commitTransaction();
+            session.endSession();
+
 
             // Generate JWT token
             console.log('Generating JWT token...');
