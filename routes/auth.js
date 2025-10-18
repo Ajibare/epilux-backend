@@ -290,7 +290,7 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
 });
 
 // Admin login endpoint
-router.post('/admin-login', async (req, res) => {
+router.post('/admin/login', async (req, res) => {
     try {
         const { email, password } = req.body;
 

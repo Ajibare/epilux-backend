@@ -74,7 +74,7 @@ async function setupAdminCredentials() {
         log(`📧 Admin Email: ${adminEmail}`, 'blue');
         log(`🔑 Admin Password: ${adminPassword}`, 'blue');
         log('\n🚀 You can now use these credentials to log in to the admin dashboard at:', 'cyan');
-        log('   POST /api/auth/admin-login', 'yellow');
+        log('   POST /api/auth/admin/login', 'yellow');
         log('\n📋 Request body:', 'cyan');
         log('   {', 'yellow');
         log('     "email": "' + adminEmail + '",', 'yellow');

@@ -63,7 +63,7 @@ async function createAdminUser() {
         log(`👤 Name: ${adminUser.firstName} ${adminUser.lastName}`, 'blue');
         log(`🔑 Role: ${adminUser.role}`, 'blue');
         log('\n🚀 You can now log in with these credentials at:', 'cyan');
-        log('   POST /api/auth/admin-login', 'yellow');
+        log('   POST /api/auth/admin/login', 'yellow');
         log('\n📋 Request body:', 'cyan');
         log('   {', 'yellow');
         log('     "email": "' + adminUser.email + '",', 'yellow');
