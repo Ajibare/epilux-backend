@@ -56,7 +56,6 @@ const userSchema = new Schema({
     profile: {
         phone: {
             type: String,
-            required: [true, 'Phone number is required'],
             trim: true
         },
         address: {
