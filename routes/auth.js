@@ -1,4 +1,5 @@
 import express from 'express';
+import { body, param } from 'express-validator';
 import User from '../models/User.js';
 import PasswordResetToken from '../models/PasswordResetToken.js';
 import { generateToken, verifyToken } from '../middleware/auth.js';
@@ -13,7 +14,7 @@ import {
     handleValidationErrors,
     validatePasswordChange
 } from '../config/validation.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, ROLES } from '../middleware/auth.js';
 import { changePassword, updateProfile } from '../controllers/authController.js';
 import { upload } from '../middleware/upload.js';
 
@@ -696,8 +697,213 @@ router.post('/reset-password', validateResetPassword, handleValidationErrors, as
 });
 
 
-// In auth.js (routes)
+// Admin create user
+router.post('/admin/users', authenticate, [
+    body('email')
+        .isEmail().withMessage('Please provide a valid email')
+        .normalizeEmail(),
+    body('password')
+        .isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+    body('firstName')
+        .notEmpty().withMessage('First name is required')
+        .trim()
+        .isLength({ min: 2 }).withMessage('First name must be at least 2 characters'),
+    body('lastName')
+        .notEmpty().withMessage('Last name is required')
+        .trim()
+        .isLength({ min: 2 }).withMessage('Last name must be at least 2 characters'),
+    body('phone')
+        .notEmpty().withMessage('Phone number is required')
+        .trim()
+        .matches(/^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/)
+        .withMessage('Please provide a valid phone number'),
+    body('role')
+        .optional()
+        .isIn(['user', 'admin', 'affiliate', 'marketer'])
+        .withMessage('Invalid role specified')
+], handleValidationErrors, async (req, res) => {
+    // Check if user is admin
+    if (req.user.role !== ROLES.ADMIN) {
+        return res.status(403).json({
+            success: false,
+            message: 'Access denied. Admin privileges required.'
+        });
+    }
+
+    const session = await User.startSession();
+    session.startTransaction();
+    
+    try {
+        const { email, password, firstName, lastName, phone, role = 'user' } = req.body;
+        
+        // Check if user already exists
+        const existingUser = await User.findOne({ email }).session(session);
+        if (existingUser) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(409).json({
+                success: false,
+                message: 'A user with this email already exists',
+                error: 'DUPLICATE_EMAIL'
+            });
+        }
+
+        // Create new user
+        const user = new User({
+            email,
+            password,
+            firstName,
+            lastName,
+            role,
+            emailVerified: true,
+            profile: {
+                phone: phone.trim()
+            }
+        });
+
+        await user.save({ session });
+        await session.commitTransaction();
+        session.endSession();
+
+        // Don't include sensitive data in response
+        const userResponse = user.toObject();
+        delete userResponse.password;
+        delete userResponse.__v;
+
+        return res.status(201).json({
+            success: true,
+            message: 'User created successfully',
+            data: userResponse
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        
+        console.error('❌ Error in admin user creation:', {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            stack: error.stack
+        });
+
+        const statusCode = error.name === 'ValidationError' ? 400 : 500;
+        const response = {
+            success: false,
+            message: error.message || 'Error creating user',
+            error: error.name || 'INTERNAL_SERVER_ERROR'
+        };
+
+        if (process.env.NODE_ENV === 'development') {
+            response.debug = {
+                name: error.name,
+                message: error.message,
+                ...(error.code && { code: error.code })
+            };
+        }
+
+        return res.status(statusCode).json(response);
+    }
+});
+
+// Admin update user role
+router.patch('/admin/users/:userId/role', authenticate, [
+    param('userId')
+        .notEmpty().withMessage('User ID is required')
+        .isMongoId().withMessage('Invalid user ID format'),
+    body('role')
+        .notEmpty().withMessage('Role is required')
+        .isIn(['user', 'admin', 'affiliate', 'marketer'])
+        .withMessage('Invalid role. Must be one of: user, admin, affiliate, marketer')
+], handleValidationErrors, async (req, res) => {
+    // Check if user is admin
+    if (req.user.role !== ROLES.ADMIN) {
+        return res.status(403).json({
+            success: false,
+            message: 'Access denied. Admin privileges required.'
+        });
+    }
+
+    const session = await User.startSession();
+    session.startTransaction();
+    
+    try {
+        const { userId } = req.params;
+        const { role } = req.body;
+        
+        // Check if user exists
+        const user = await User.findById(userId).session(session);
+        if (!user) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({
+                success: false,
+                message: 'User not found',
+                error: 'USER_NOT_FOUND'
+            });
+        }
+
+        // Prevent admin from changing their own role
+        if (user._id.toString() === req.user._id.toString()) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot change your own role',
+                error: 'SELF_ROLE_CHANGE_NOT_ALLOWED'
+            });
+        }
+
+        // Update user role
+        user.role = role;
+        await user.save({ session });
+        await session.commitTransaction();
+        session.endSession();
+
+        // Prepare response without sensitive data
+        const userResponse = user.toObject();
+        delete userResponse.password;
+        delete userResponse.__v;
+
+        return res.json({
+            success: true,
+            message: 'User role updated successfully',
+            data: userResponse
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        
+        console.error('❌ Error updating user role:', {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            stack: error.stack
+        });
+
+        const statusCode = error.name === 'ValidationError' ? 400 : 500;
+        const response = {
+            success: false,
+            message: error.message || 'Error updating user role',
+            error: error.name || 'INTERNAL_SERVER_ERROR'
+        };
+
+        if (process.env.NODE_ENV === 'development') {
+            response.debug = {
+                name: error.name,
+                message: error.message,
+                ...(error.code && { code: error.code })
+            };
+        }
+
+        return res.status(statusCode).json(response);
+    }
+});
+
+// User routes
 router.put('/change-password', authenticate, validatePasswordChange, handleValidationErrors, changePassword);
 router.put('/profile', authenticate, upload.single('avatar'), validateProfileUpdate, handleValidationErrors, updateProfile);
+
 // Export the router as default
 export default router;
