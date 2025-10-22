@@ -54,7 +54,11 @@ const userSchema = new Schema({
         type: Date
     },
     profile: {
-        phone: String,
+        phone: {
+            type: String,
+            required: [true, 'Phone number is required'],
+            trim: true
+        },
         address: {
             street: String,
             city: String,
@@ -64,6 +68,11 @@ const userSchema = new Schema({
         },
         avatar: String,
         dateOfBirth: Date
+    },
+    assignedMarketer: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
     },
     affiliateInfo: {
         affiliateCode: String,

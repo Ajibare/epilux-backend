@@ -173,6 +173,11 @@ const validateRegistration = [
         .notEmpty().withMessage('Last name is required')
         .trim()
         .isLength({ min: 2 }).withMessage('Last name must be at least 2 characters'),
+    body('phone')
+        .notEmpty().withMessage('Phone number is required')
+        .trim()
+        .matches(/^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/)
+        .withMessage('Please provide a valid phone number'),
     body('referralCode')
         .optional()
         .isString()

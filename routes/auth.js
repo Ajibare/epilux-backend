@@ -28,16 +28,34 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
     session.startTransaction();
     
     try {
-        const { email, password, firstName, lastName, role = 'user' } = req.body;
+        const { email, password, firstName, lastName, phone, role = 'user', referralCode } = req.body;
         
         console.log('Validating request data...');
-        if (!email || !password || !firstName || !lastName) {
-            console.error('Missing required fields:', { email: !!email, password: !!password, firstName: !!firstName, lastName: !!lastName });
+        if (!email || !password || !firstName || !lastName || !phone) {
+            console.error('Missing required fields:', { 
+                email: !!email, 
+                password: !!password, 
+                firstName: !!firstName, 
+                lastName: !!lastName,
+                phone: !!phone
+            });
             return res.status(400).json({
                 success: false,
                 message: 'Missing required fields',
-                required: { email: true, password: true, firstName: true, lastName: true },
-                received: { email: !!email, password: !!password, firstName: !!firstName, lastName: !!lastName }
+                required: { 
+                    email: true, 
+                    password: true, 
+                    firstName: true, 
+                    lastName: true,
+                    phone: true 
+                },
+                received: { 
+                    email: !!email, 
+                    password: !!password, 
+                    firstName: !!firstName, 
+                    lastName: !!lastName,
+                    phone: !!phone
+                }
             });
         }
 
@@ -69,7 +87,7 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
         }
 
 
-          // Find referring user if referral code is provided
+        // Find referring user if referral code is provided
         let referringUser = null;
         if (referralCode) {
             referringUser = await User.findOne({ 'affiliateInfo.affiliateCode': referralCode }).session(session);
@@ -83,144 +101,149 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
             }
         }
 
-        // Create new user
-        console.log('Creating new user:', { 
-            email, 
-            firstName, 
-            lastName, 
-            role,
-            emailVerified: true
-        });
-        
-        const user = new User({
+        // Find an available marketer (affiliate with the least number of assigned users)
+        const marketer = await User.findOne({ role: 'affiliate' })
+            .sort({ 'affiliateInfo.assignedUsersCount': 1 })
+            .select('_id')
+            .session(session);
+
+        // Create user data
+        const userData = {
             email,
             password, // This will be hashed by the pre-save hook
             firstName,
             lastName,
             role,
             emailVerified: true,
-            role,
-            ...(referringUser && {
-                referredBy: {
-                    user: referringUser._id,
-                    date: new Date(),
-                    commissionShareActive: true
-                 }
-            })
-        });
-        
-        
-        console.log('User object created, attempting to save...');
-
-        try {
-            console.log('Saving user to database...');
-            await user.save();
-            console.log('✅ User saved successfully:', { 
-                userId: user._id,
-                email: user.email,
-                role: user.role
-            });
-
-
-              const user = new User(userData);
-            await user.save({ session });
-
-            // Update referring user's stats if applicable
-            if (referringUser) {
-                await User.findByIdAndUpdate(
-                    referringUser._id,
-                    { $inc: { 'stats.totalReferredUsers': 1 } },
-                    { session }
-                );
+            assignedMarketer: marketer?._id || null,
+            profile: {
+                phone: phone.trim()
             }
+        };
 
-            await session.commitTransaction();
-            session.endSession();
-
-
-            // Generate JWT token
-            console.log('Generating JWT token...');
-            const token = generateToken(user._id, user.role);
-            
-            console.log('✅ Registration successful, sending response...');
-            return res.status(201).json({
-                success: true,
-                message: 'User registered successfully',
-                data: {
-                    user: {
-                        id: user._id,
-                        email: user.email,
-                        firstName: user.firstName,
-                        lastName: user.lastName,
-                        role: user.role
-                    },
-                    token
-                }
-            });
-        } catch (saveError) {
-            console.error('❌ Error saving user:', {
-                name: saveError.name,
-                message: saveError.message,
-                code: saveError.code,
-                codeName: saveError.codeName,
-                keyPattern: saveError.keyPattern,
-                keyValue: saveError.keyValue,
-                errors: saveError.errors,
-                stack: saveError.stack
-            });
-            
-            if (saveError.name === 'ValidationError') {
-                const errors = Object.values(saveError.errors).map(err => ({
-                    field: err.path,
-                    message: err.message,
-                    type: err.kind
-                }));
-                return res.status(400).json({
-                    success: false,
-                    message: 'Validation failed',
-                    error: 'VALIDATION_ERROR',
-                    errors
-                });
-            }
-            
-            if (saveError.code === 11000) {
-                return res.status(409).json({
-                    success: false,
-                    message: 'A user with this email already exists',
-                    error: 'DUPLICATE_EMAIL',
-                    field: Object.keys(saveError.keyPattern)[0],
-                    value: saveError.keyValue.email
-                });
-            }
-            
-            throw saveError; // Let the global error handler catch this
+        // Add referral info if applicable
+        if (referringUser) {
+            userData.referredBy = referringUser._id;
         }
-    } catch (error) {
+
+        console.log('Creating new user:', { 
+            email, 
+            firstName, 
+            lastName, 
+            role,
+            phone: phone.trim(),
+            marketerAssigned: !!marketer,
+            referredBy: referringUser?._id
+        });
+
+        const user = new User(userData);
+        await user.save({ session });
+        console.log('✅ User saved successfully:', { 
+            userId: user._id,
+            email: user.email,
+            role: user.role
+        });
+
+        // Update marketer's assigned users count if a marketer was assigned
+        if (marketer) {
+            await User.updateOne(
+                { _id: marketer._id },
+                { $inc: { 'affiliateInfo.assignedUsersCount': 1 } },
+                { session }
+            );
+        }
+
+        // Update referring user's stats if applicable
+        if (referringUser) {
+            await User.findByIdAndUpdate(
+                referringUser._id,
+                { $inc: { 'stats.totalReferredUsers': 1 } },
+                { session }
+            );
+        }
+
+        await session.commitTransaction();
+        session.endSession();
+
+        // Generate JWT token
+        console.log('Generating JWT token...');
+        const token = generateToken(user._id, user.role);
+        
+        console.log('✅ Registration successful, sending response...');
+        return res.status(201).json({
+            success: true,
+            message: 'User registered successfully',
+            data: {
+                user: {
+                    id: user._id,
+                    email: user.email,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    role: user.role
+                },
+                token
+            }
+        });
+    } catch (saveError) {
+        console.error('❌ Error saving user:', {
+            name: saveError.name,
+            message: saveError.message,
+            code: saveError.code,
+            keyPattern: saveError.keyPattern,
+            stack: saveError.stack
+        });
+
+        // Handle duplicate key error (unique constraint violation)
+        if (saveError.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: 'A user with this email already exists',
+                error: 'DUPLICATE_EMAIL',
+                field: Object.keys(saveError.keyPattern)[0],
+                value: saveError.keyValue.email
+            });
+        }
+
+        // Handle validation errors
+        if (saveError.name === 'ValidationError') {
+            const errors = {};
+            Object.keys(saveError.errors).forEach(key => {
+                errors[key] = saveError.errors[key].message;
+            });
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                error: 'VALIDATION_ERROR',
+                errors
+            });
+        }
+
+        // Default error response
         console.error('❌ Unhandled error in registration route:', {
-            name: error.name,
-            message: error.message,
-            code: error.code,
-            codeName: error.codeName,
-            stack: error.stack,
-            ...(error.keyPattern && { keyPattern: error.keyPattern }),
-            ...(error.keyValue && { keyValue: error.keyValue }),
-            ...(error.errors && { errors: error.errors })
+            name: saveError.name,
+            message: saveError.message,
+            code: saveError.code,
+            codeName: saveError.codeName,
+            stack: saveError.stack,
+            ...(saveError.keyPattern && { keyPattern: saveError.keyPattern }),
+            ...(saveError.keyValue && { keyValue: saveError.keyValue }),
+            ...(saveError.errors && { errors: saveError.errors })
         });
         
-        // Default error response
+        // Prepare error response
         const errorResponse = {
             success: false,
             message: 'Internal server error during registration',
             error: 'INTERNAL_SERVER_ERROR'
         };
         
-        // Add more details in development
+        // Add debug info in development
         if (process.env.NODE_ENV === 'development') {
             errorResponse.debug = {
-                name: error.name,
-                message: error.message,
-                ...(error.code && { code: error.code }),
-                ...(error.keyPattern && { keyPattern: error.keyPattern })
+                name: saveError.name,
+                message: saveError.message,
+                ...(saveError.code && { code: saveError.code }),
+                ...(saveError.keyPattern && { keyPattern: saveError.keyPattern })
             };
         }
         
