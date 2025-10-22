@@ -254,12 +254,20 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
     }
 });
 
-// User login
-router.post('/login', validateLogin, handleValidationErrors, async (req, res) => {
+// User login - Only email login is allowed
+router.post('/login', [
+    body('email')
+        .isEmail()
+        .withMessage('Please provide a valid email address')
+        .normalizeEmail(),
+    body('password')
+        .notEmpty()
+        .withMessage('Password is required')
+], handleValidationErrors, async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // Find user by email
+        // Find user by email only (phone login not allowed)
         const user = await User.findOne({ email });
         if (!user) {
             return res.status(401).json({
