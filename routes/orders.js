@@ -10,8 +10,63 @@ import {
     validatePagination,
     handleValidationErrors
 } from '../middleware/validation.js';
+import { 
+    createOrder, 
+    getOrders, 
+    getOrder, 
+    updateOrderStatus, 
+    deleteOrder, 
+    getUserOrders, 
+    getOrderStats,
+    markAsDelivered,
+    confirmDelivery
+} from '../controllers/orderController.js';
 
 const router = express.Router();
+
+
+
+// Apply authentication middleware to all routes
+router.use(authenticate);
+
+// Create a new order
+router.post('/', catchAsync(createOrder));
+
+// Mark order as delivered (for marketers)
+router.post(
+    '/:orderId/deliver', 
+    authorize('marketer'), 
+    catchAsync(markAsDelivered)
+);
+
+// Confirm order delivery (for customers)
+router.post(
+    '/:orderId/confirm', 
+    authorize('user'), 
+    catchAsync(confirmDelivery)
+);
+
+// Get all orders (admin only)
+router.get('/', authorize('admin'), catchAsync(getOrders));
+
+// Get order statistics (admin only)
+router.get('/stats', authorize('admin'), catchAsync(getOrderStats));
+
+// Get orders for current user
+router.get('/my-orders', catchAsync(getUserOrders));
+
+// Get single order
+router.get('/:id', catchAsync(getOrder));
+
+// Update order status (admin only)
+router.patch(
+    '/:id/status', 
+    authorize('admin'), 
+    catchAsync(updateOrderStatus)
+);
+
+// Delete order (admin only)
+router.delete('/:id', authorize('admin'), catchAsync(deleteOrder));
 
 
 // Generate unique order number

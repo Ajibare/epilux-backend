@@ -4,6 +4,7 @@ import Product from '../models/Product.js';
 import Order from '../models/Order.js';
 import AffiliateCommission from '../models/AffiliateCommission.js';
 import AffiliateWithdrawal from '../models/AffiliateWithdrawal.js';
+import SeasonalPromoService from '../services/seasonalPromoService.js';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -243,168 +244,115 @@ const getRecentSignups = async (limit = 5) => {
   }
 };
 
-// ===== MAIN CONTROLLER FUNCTIONS =====
+// ===== SEASONAL PROMOTION FUNCTIONS =====
 
 /**
- * Get admin dashboard statistics
+ * Create or update a seasonal promotion
  */
-// const getDashboardStats = async (req, res) => {
-//   try {
-//     const now = new Date();
-//     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-//     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-//     // const twoMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-
-//     // Current period data
-//     const [
-//       totalUsers,
-//       totalProducts,
-//       totalOrders,
-//       totalRevenue,
-//       monthlyRevenue,
-//       pendingOrders,
-//       completedOrders,
-//       lowStockProducts,
-//       activeAffiliates,
-//       // Previous period data for comparison
-//       lastMonthOrders,
-//       lastMonthRevenue,
-//       lastMonthAffiliates,
-//       lastMonthPendingOrders
-//     ] = await Promise.all([
-//       // Current period
-//       User.countDocuments(),
-//       Product.countDocuments(),
-//       Order.countDocuments(),
-//       Order.aggregate([
-//         { $match: { status: 'completed' } },
-//         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
-//       ]),
-//       Order.aggregate([
-//         { 
-//           $match: { 
-//             status: 'completed',
-//             createdAt: { $gte: currentMonthStart }
-//           }
-//         },
-//         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
-//       ]),
-//       Order.countDocuments({ status: 'pending' }),
-//       Order.countDocuments({ status: 'completed' }),
-//           // Updated to use the new stock field
-//       Product.countDocuments({ stock: { $lt: 10 } }),
-//       User.countDocuments({ role: 'affiliate', isActive: true }),
-      
-//       // Previous period data
-//       Order.countDocuments({ 
-//         createdAt: { 
-//           $gte: lastMonthStart,
-//           $lt: currentMonthStart
-//         }
-//       }),
-//       Order.aggregate([
-//         { 
-//           $match: { 
-//             status: 'completed',
-//             createdAt: { 
-//               $gte: lastMonthStart,
-//               $lt: currentMonthStart
-//             }
-//           } 
-//         },
-//         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
-//       ]),
-//       User.countDocuments({ 
-//         role: 'affiliate',
-//         isActive: true,
-//         createdAt: { $lt: currentMonthStart }
-//       }),
-//       Order.countDocuments({ 
-//         status: 'pending',
-//         createdAt: { 
-//           $gte: lastMonthStart,
-//           $lt: currentMonthStart
-//         }
-//       })
-//     ]);
-
-//     // Calculate percentage changes
-//     const calculateChange = (current, previous) => {
-//       if (!previous || previous === 0) return 0;
-//       return Math.round(((current - previous) / previous) * 100);
-//     };
-
-//     // Get additional data in parallel
-//     const [recentUsers, topProducts, recentActivities, salesTrend, userAcquisition, customerRetention] = await Promise.all([
-//       User.find()
-//         .sort({ createdAt: -1 })
-//         .limit(5)
-//         .select('-password')
-//         .lean(),
-//       getTopSellingProducts(5),
-//       Promise.all([
-//         getRecentOrders(3),
-//         getRecentSignups(3),
-//         getRecentAffiliateActivity(4)
-//       ]).then(results => results.flat().sort((a, b) => new Date(b.timestamp || b.createdAt) - new Date(a.timestamp || a.createdAt)).slice(0, 10)),
-//       getSalesTrend(30),
-//       getUserAcquisition(90),
-//       calculateCustomerRetention()
-//     ]);
-
-//     // Extract values from aggregations
-//     const currentRevenue = totalRevenue[0]?.total || 0;
-//     const currentMonthlyRevenue = monthlyRevenue[0]?.total || 0;
-//     const lastMonthRev = lastMonthRevenue[0]?.total || 0;
-
-//     // Prepare response
-//     const stats = {
-//       overview: {
-//         // Main metrics
-//         totalOrders,
-//         totalRevenue: currentRevenue,
-//         monthlyRevenue: currentMonthlyRevenue,
-//         pendingOrders,
-//         completedOrders,
-//         totalUsers,
-//         totalProducts,
-//         lowStockProducts,
-//         activeAffiliates,
+const createUpdateSeasonalPromo = async (req, res) => {
+    try {
+        const { name, startDate, endDate, commissionRate, isActive } = req.body;
         
-//         // Percentage changes
-//         changes: {
-//           totalOrders: calculateChange(totalOrders, lastMonthOrders),
-//           totalRevenue: calculateChange(currentRevenue, lastMonthRev),
-//           pendingOrders: calculateChange(pendingOrders, lastMonthPendingOrders),
-//           activeAffiliates: calculateChange(activeAffiliates, lastMonthAffiliates)
-//         }
-//       },
-//       analytics: {
-//         topSellingProducts: topProducts,
-//         salesTrend,
-//         userAcquisition,
-//         customerRetention
-//       },
-//       recent: {
-//         users: recentUsers,
-//         activity: recentActivities
-//       }
-//     };
+        // Validate dates
+        if (new Date(startDate) >= new Date(endDate)) {
+            return res.status(400).json({
+                success: false,
+                message: 'End date must be after start date'
+            });
+        }
 
-//     res.status(200).json({
-//       success: true,
-//       data: stats
-//     });
-//   } catch (error) {
-//     console.error('Error getting dashboard stats:', error);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Error fetching dashboard statistics',
-//       error: error.message
-//     });
-//   }
-// };
+        // Check for date conflicts
+        const existingPromo = SeasonalPromoService.seasonalPromotions.find(promo => 
+            (new Date(startDate) <= new Date(promo.endDate) && 
+             new Date(endDate) >= new Date(promo.startDate) &&
+             promo.name !== name) // Allow updating same promotion
+        );
 
+        if (existingPromo) {
+            return res.status(400).json({
+                success: false,
+                message: `Date range conflicts with existing promotion: ${existingPromo.name}`
+            });
+        }
+
+        // Update or add promotion
+        const promoIndex = SeasonalPromoService.seasonalPromotions.findIndex(p => p.name === name);
+        
+        const promoData = {
+            name,
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
+            commissionRate: Number(commissionRate),
+            isActive: Boolean(isActive)
+        };
+
+        if (promoIndex >= 0) {
+            SeasonalPromoService.seasonalPromotions[promoIndex] = promoData;
+        } else {
+            SeasonalPromoService.seasonalPromotions.push(promoData);
+        }
+
+        res.status(200).json({
+            success: true,
+            data: promoData
+        });
+    } catch (error) {
+        console.error('Error creating/updating seasonal promo:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error creating/updating seasonal promotion'
+        });
+    }
+};
+
+/**
+ * Get all seasonal promotions
+ */
+const getSeasonalPromos = (req, res) => {
+    try {
+        res.status(200).json({
+            success: true,
+            data: SeasonalPromoService.seasonalPromotions
+        });
+    } catch (error) {
+        console.error('Error getting seasonal promos:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching seasonal promotions'
+        });
+    }
+};
+
+/**
+ * Delete a seasonal promotion
+ */
+const deleteSeasonalPromo = (req, res) => {
+    try {
+        const { name } = req.params;
+        const initialLength = SeasonalPromoService.seasonalPromotions.length;
+        
+        SeasonalPromoService.seasonalPromotions = 
+            SeasonalPromoService.seasonalPromotions.filter(promo => promo.name !== name);
+        
+        if (SeasonalPromoService.seasonalPromotions.length === initialLength) {
+            return res.status(404).json({
+                success: false,
+                message: 'Promotion not found'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Promotion deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting seasonal promo:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error deleting seasonal promotion'
+        });
+    }
+};
 
 
 const getDashboardStats = async (req, res) => {
@@ -1233,7 +1181,14 @@ export const updateUserRole = async (req, res) => {
 };
 
 // Export all controller functions
+// Export all controller functions
 export {
+    // Seasonal Promotions
+    createUpdateSeasonalPromo,
+    getSeasonalPromos,
+    deleteSeasonalPromo,
+    
+    // Existing exports
     getDashboardStats,
     getUser,
     getUsers,

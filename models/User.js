@@ -27,8 +27,20 @@ const userSchema = new Schema({
     },
     role: {
         type: String,
-        enum: ['user', 'admin', 'affiliate'],
+        enum: ['user', 'admin', 'affiliate', 'marketer'],
         default: 'user'
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    },
+    assignedOrdersCount: {
+        type: Number,
+        default: 0
+    },
+    completedOrdersCount: {
+        type: Number,
+        default: 0
     },
     suspended: {
         type: Boolean,

@@ -48,6 +48,13 @@ router.put('/affiliates/:id/status', authenticate, authorize(ROLES.ADMIN), admin
 router.get('/affiliates/:id/commissions', authenticate, authorize(ROLES.ADMIN), adminController.getAffiliateCommissions);
 router.post('/affiliates/commissions', authenticate, authorize(ROLES.ADMIN), adminController.createCommission);
 
+// Seasonal Promotion management routes
+router.route('/promotions/seasonal')
+  .get(authenticate, authorize(ROLES.ADMIN), adminController.getSeasonalPromos)
+  .post(authenticate, authorize(ROLES.ADMIN), adminController.createUpdateSeasonalPromo);
+
+router.delete('/promotions/seasonal/:name', authenticate, authorize(ROLES.ADMIN), adminController.deleteSeasonalPromo);
+
 // Commission management routes
 router.get('/commissions', authenticate, authorize(ROLES.ADMIN), adminController.getAffiliateCommissions);
 router.put('/commissions/:id/status', authenticate, authorize(ROLES.ADMIN), adminController.updateCommissionStatus);

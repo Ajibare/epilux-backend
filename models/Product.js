@@ -48,6 +48,21 @@ const productSchema = new Schema({
         default: 0,
         min: 0
     },
+    rating: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5,
+        set: val => Math.round(val * 10) / 10 // Round to 1 decimal place
+    },
+    ratingCount: {
+        type: Number,
+        default: 0
+    },
+    reviewsCount: {
+        type: Number,
+        default: 0
+    },
     isActive: {
         type: Boolean,
         default: true
