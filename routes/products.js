@@ -88,13 +88,15 @@ router.post(
             if (req.fileUrls && req.fileUrls.length > 0) {
                 images = req.fileUrls.map(file => ({
                     url: file.url,
-                    path: file.path
+                    path: file.path,
+                    isPrimary: false
                 }));
             } else if (req.body.images && Array.isArray(req.body.images)) {
                 // If images are provided as URLs (for testing or manual entry)
                 images = req.body.images.map(url => ({
                     url,
-                    path: null
+                    path: null,
+                    isPrimary: false
                 }));
             }
 
@@ -121,6 +123,11 @@ router.post(
                 isFeatured: req.body.isFeatured === 'true' || req.body.isFeatured === true,
                 createdBy: req.user.id
             });
+
+            // Set first image as primary if no primary is set
+            if (product.images.length > 0 && !product.images.some(img => img.isPrimary)) {
+                product.images[0].isPrimary = true;
+            }
 
             await product.save();
             
