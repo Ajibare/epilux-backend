@@ -95,9 +95,11 @@ router.get('/sales', verifyToken, async (req, res) => {
     }
 });
 
-// Get affiliate referrals
+// Get affiliate referrals with activity status
 router.get('/referrals', verifyToken, async (req, res) => {
     try {
+        const { status } = req.query; // 'active', 'inactive', or undefined for all
+        
         const affiliate = await Affiliate.findOne({ userId: req.user.id });
 
         if (!affiliate) {
@@ -107,22 +109,50 @@ router.get('/referrals', verifyToken, async (req, res) => {
             });
         }
 
-        const referredAffiliates = await Affiliate.find({ 
-            referredBy: affiliate.referralCode 
-        }).populate('userId', 'firstName lastName email');
+        // Calculate the date 30 days ago
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        // Build the query
+        let query = { referredBy: affiliate.referralCode };
+        
+        // Apply status filter if provided
+        if (status === 'active') {
+            query.lastActive = { $gte: thirtyDaysAgo };
+        } else if (status === 'inactive') {
+            query.$or = [
+                { lastActive: { $lt: thirtyDaysAgo } },
+                { lastActive: { $exists: false } }
+            ];
+        }
+
+        const referredAffiliates = await Affiliate.find(query)
+            .populate('userId', 'firstName lastName email')
+            .sort({ lastActive: -1 });
 
         const referrals = referredAffiliates.map(ref => ({
             id: ref._id,
             name: ref.name,
             email: ref.email,
             joinDate: ref.registrationDate,
+            lastActive: ref.lastActive,
+            isActive: ref.lastActive && ref.lastActive >= thirtyDaysAgo,
             sales: ref.totalSales,
             commission: ref.currentCommission
         }));
 
+        // Get counts for summary
+        const activeCount = referrals.filter(r => r.isActive).length;
+        const inactiveCount = referrals.length - activeCount;
+
         res.json({
             success: true,
-            data: referrals
+            data: referrals,
+            summary: {
+                total: referrals.length,
+                active: activeCount,
+                inactive: inactiveCount
+            }
         });
     } catch (error) {
         console.error('Error fetching affiliate referrals:', error);
@@ -145,14 +175,17 @@ router.get('/dashboard', verifyToken, async (req, res) => {
             });
         }
 
+        // Get transactions
         const transactions = await Transaction.find({ 
             affiliateId: affiliate._id,
             status: 'completed'
         });
 
+        // Calculate totals
         const totalSales = transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
         const totalCommission = transactions.reduce((sum, transaction) => sum + transaction.commissionEarned, 0);
 
+        // Calculate monthly data
         const monthlySales = {};
         const monthlyCommission = {};
 
@@ -168,6 +201,20 @@ router.get('/dashboard', verifyToken, async (req, res) => {
             commission: monthlyCommission[month]
         }));
 
+        // Get referral activity stats
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const [activeReferrals, allReferrals] = await Promise.all([
+            Affiliate.countDocuments({
+                referredBy: affiliate.referralCode,
+                lastActive: { $gte: thirtyDaysAgo }
+            }),
+            Affiliate.countDocuments({
+                referredBy: affiliate.referralCode
+            })
+        ]);
+
         res.json({
             success: true,
             data: {
@@ -176,7 +223,9 @@ router.get('/dashboard', verifyToken, async (req, res) => {
                     totalSales,
                     totalCommission,
                     totalTransactions: transactions.length,
-                    totalReferrals: affiliate.totalReferrals
+                    totalReferrals: allReferrals,
+                    activeReferrals,
+                    inactiveReferrals: allReferrals - activeReferrals
                 },
                 salesData
             }

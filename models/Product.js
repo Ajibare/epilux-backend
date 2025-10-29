@@ -19,8 +19,18 @@ const productSchema = new Schema({
     sku: {
         type: String,
         unique: true,
-        sparse: true,
-        required: false
+        required: false,
+        default: function() {
+            // Auto-generate a unique SKU if not provided
+            return `SKU-${Math.random().toString(36).substring(2, 10).toUpperCase()}-${Date.now().toString().slice(-4)}`;
+        },
+        validate: {
+            validator: function(v) {
+                // Ensure SKU is not null or empty string
+                return v !== null && v.trim() !== '';
+            },
+            message: 'SKU cannot be empty'
+        }
     },
     category: {
         type: String,
