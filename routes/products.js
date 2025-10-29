@@ -86,19 +86,27 @@ router.post(
             let images = [];
             
             if (req.fileUrls && req.fileUrls.length > 0) {
-                images = req.fileUrls.map(file => ({
-                    url: file.url,
-                    path: file.path,
-                    isPrimary: false
+                console.log('Processing uploaded files:', req.fileUrls);
+                images = req.fileUrls.map((file, index) => ({
+                    url: file.url,  // This will be something like '/uploads/product-12345.jpg'
+                    path: file.path, // This is the full server path to the file
+                    isPrimary: index === 0, // First image is primary
+                    publicId: `product-${Date.now()}-${index}`
                 }));
             } else if (req.body.images && Array.isArray(req.body.images)) {
                 // If images are provided as URLs (for testing or manual entry)
-                images = req.body.images.map(url => ({
-                    url,
+                console.log('Processing image URLs from request body');
+                images = req.body.images.map((url, index) => ({
+                    url: url,
                     path: null,
-                    isPrimary: false
+                    isPrimary: index === 0,
+                    publicId: `external-${Date.now()}-${index}`
                 }));
+            } else {
+                console.log('No images provided in the request');
             }
+            
+            console.log('Processed images:', JSON.stringify(images, null, 2));
 
             // Parse specifications if it's a string
             let specifications = {};
@@ -129,12 +137,23 @@ router.post(
                 product.images[0].isPrimary = true;
             }
 
-            await product.save();
+            const savedProduct = await product.save();
+            
+            // Ensure the response includes the full image URLs
+            const productResponse = savedProduct.toObject();
+            if (productResponse.images && productResponse.images.length > 0) {
+                productResponse.images = productResponse.images.map(img => ({
+                    ...img,
+                    // Ensure the URL is absolute if it's a local file
+                    url: img.url.startsWith('http') ? img.url : 
+                         `${req.protocol}://${req.get('host')}${img.url}`
+                }));
+            }
             
             res.status(201).json({
                 success: true,
                 message: 'Product created successfully',
-                data: product
+                data: productResponse
             });
         } catch (error) {
             // Clean up any uploaded files if there was an error

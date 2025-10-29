@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
+import path from 'path';
 import { globalErrorHandler, requestLogger } from './middleware/errorHandler.js';
 import config from './config/environment.js';
 import User from './models/User.js';
@@ -11,6 +12,7 @@ import deliveryRoutes from './routes/delivery.js';
 import commissionAdminRoutes from './routes/commissionAdmin.js';
 import marketerRoutes from './routes/marketer.js';
 import withdrawalRoutes from './routes/withdrawals.js';
+import uploadRoutes from './routes/uploads.js';
 import setupScheduledTasks from './services/scheduler.js'
 
 const app = express();
@@ -166,6 +168,9 @@ const connectDB = async () => {
 // Initialize database connection
 connectDB();
 
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
+
 // Reconnect on connection loss
 setInterval(async () => {
   if (!isConnected) {
@@ -176,6 +181,9 @@ setInterval(async () => {
 
 // ✅ Routes
 import authRoutes from './routes/auth.js';
+
+// Upload routes
+app.use('/api/uploads', uploadRoutes);
 import productRoutes from './routes/products.js';
 import orderRoutes from './routes/orders.js';
 import affiliateRoutes from './routes/affiliate.js';

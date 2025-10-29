@@ -54,6 +54,7 @@ const upload = multer({
 // Helper function to get the public URL for a file
 const getFileUrl = (filename) => {
     if (!filename) return null;
+    // Return the full URL path that will be accessible from the frontend
     return `/uploads/${path.basename(filename)}`;
 };
 
@@ -100,16 +101,26 @@ const uploadProductImages = (req, res, next) => {
 
 // Function to delete a file
 const deleteFile = (filePath) => {
-    if (filePath && fs.existsSync(filePath)) {
-        try {
-            fs.unlinkSync(filePath);
+    if (!filePath) return false;
+    
+    // Handle both relative and absolute paths
+    const fullPath = filePath.startsWith(process.cwd()) 
+        ? filePath 
+        : path.join(process.cwd(), filePath);
+    
+    try {
+        if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+            console.log(`Successfully deleted file: ${fullPath}`);
             return true;
-        } catch (error) {
-            console.error('Error deleting file:', error);
+        } else {
+            console.warn(`File not found, cannot delete: ${fullPath}`);
             return false;
         }
+    } catch (error) {
+        console.error(`Error deleting file ${fullPath}:`, error);
+        return false;
     }
-    return false;
 };
 
 export { upload, uploadProductImages, getFileUrl, deleteFile };
