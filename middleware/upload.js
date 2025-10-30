@@ -8,25 +8,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 
-// Define uploads directory relative to the project root
-const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-const publicDir = path.join(process.cwd(), 'public');
+// Use system's temporary directory for uploads
+import os from 'os';
+const uploadDir = path.join(os.tmpdir(), 'epilux-uploads');
 
 // Ensure uploads directory exists
 const ensureUploadsDir = () => {
     try {
-        // First ensure public directory exists
-        if (!fs.existsSync(publicDir)) {
-            fs.mkdirSync(publicDir, { recursive: true });
-        }
-        // Then ensure uploads directory exists
         if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
+            fs.mkdirSync(uploadDir, { recursive: true, mode: 0o777 });
         }
         return uploadDir;
     } catch (error) {
-        console.error('Error creating upload directories:', error);
-        throw error;
+        console.error('Error creating upload directory:', error);
+        // Fallback to current directory if temp directory is not writable
+        const fallbackDir = path.join(process.cwd(), 'temp-uploads');
+        if (!fs.existsSync(fallbackDir)) {
+            fs.mkdirSync(fallbackDir, { recursive: true, mode: 0o777 });
+        }
+        return fallbackDir;
     }
 };
 
