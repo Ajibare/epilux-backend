@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 // Get wallet balance
 export const getWalletBalance = async (req, res) => {
     try {
-        const wallet = await Wallet.findOne({ userId: req.user.id });
+        const wallet = await Wallet.findOne({ userId: req.user._id });
         
         if (!wallet) {
             return res.status(404).json({
@@ -41,7 +41,7 @@ export const getWalletTransactions = async (req, res) => {
         const { page = 1, limit = 10, type } = req.query;
         const skip = (page - 1) * limit;
         
-        const query = { userId: req.user.id };
+        const query = { userId: req.user._id };
         if (type) {
             query.type = type;
         }
