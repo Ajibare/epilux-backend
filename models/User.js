@@ -98,16 +98,36 @@ const userSchema = new Schema({
         }
     },
 
-    // New fields
+    // Referral relationships
     referredBy: {
-        type: Schema.Types.ObjectId,
-        ref: 'User',
-        default: null
+        user: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+            default: null
+        },
+        date: {
+            type: Date,
+            default: null
+        }
     },
-    // ... rest of your existing fields ...
+    referrals: [{
+        user: {
+            type: Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        date: {
+            type: Date,
+            default: Date.now
+        },
+        status: {
+            type: String,
+            enum: ['pending', 'active', 'inactive'],
+            default: 'pending'
+        }
+    }],
+    // Affiliate information
     affiliateInfo: {
         affiliateCode: String,
-        // removed referredBy from here as it's now a top-level field
         commissionRate: {
             type: Number,
             default: 0
@@ -115,9 +135,12 @@ const userSchema = new Schema({
         totalEarnings: {
             type: Number,
             default: 0
+        },
+        availableBalance: {
+            type: Number,
+            default: 0
         }
-    },
-    // New commission balance fields
+    // Commission tracking
     commissionBalance: {
         pending: {
             type: Number,
@@ -128,26 +151,31 @@ const userSchema = new Schema({
             type: Number,
             default: 0,
             min: 0
-        }
-    },
-    // New stats field
-    stats: {
-        totalReferralEarnings: {
+        },
+        lifetime: {
             type: Number,
             default: 0,
             min: 0
         }
     },
-        referredBy: {
-        user: {
-            type: Schema.Types.ObjectId,
-            ref: 'User',
-            default: null
+    // Stats and metrics
+    stats: {
+        totalReferrals: {
+            type: Number,
+            default: 0
         },
-        date: {
-            type: Date,
-            default: null
+        activeReferrals: {
+            type: Number,
+            default: 0
         },
+        totalCommissionEarned: {
+            type: Number,
+            default: 0
+        },
+        totalWithdrawn: {
+            type: Number,
+            default: 0
+        }
         commissionShareActive: {
             type: Boolean,
             default: false
