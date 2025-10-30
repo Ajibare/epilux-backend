@@ -6,9 +6,11 @@ import { generateReferralCode } from '../utils/affiliateHelpers.js';
 // Controller methods
 export const getAffiliateProfile = async (req, res) => {
     try {
+        // First, ensure the user exists and is an affiliate
         const user = await User.findById(req.user.id)
-            .select('firstName lastName email role affiliateCode referralCode totalEarnings availableBalance isAffiliate')
+            .select('firstName lastName email role referralCode totalEarnings availableBalance isAffiliate')
             .populate('referrals', 'firstName lastName email createdAt');
+            
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -16,89 +18,120 @@ export const getAffiliateProfile = async (req, res) => {
             });
         }
 
-        // Generate referral link if not exists
-        if (!user.referralCode) {
-            user.referralCode = generateReferralCode();
-            await user.save();
+        // Initialize user as affiliate if not already
+        if (user.role !== 'affiliate') {
+            user.role = 'affiliate';
+            user.isAffiliate = true;
         }
 
+        // Generate referral code if not exists
+        if (!user.referralCode) {
+            user.referralCode = generateReferralCode();
+        }
+
+        // Set default values if they don't exist
+        if (user.totalEarnings === undefined) user.totalEarnings = 0;
+        if (user.availableBalance === undefined) user.availableBalance = 0;
+        
+        await user.save();
+
         // Get total referrals count
-        const totalReferrals = await User.countDocuments({ referredBy: user._id });
-        const activeReferrals = await User.countDocuments({ 
-            referredBy: user._id,
-            isActive: true 
-        });
+        let totalReferrals = 0;
+        let activeReferrals = 0;
+        
+        try {
+            totalReferrals = await User.countDocuments({ referredBy: user._id });
+            activeReferrals = await User.countDocuments({ 
+                referredBy: user._id,
+                isActive: true 
+            });
+        } catch (error) {
+            console.error('Error counting referrals:', error);
+            // Continue with default values if there's an error
+        }
 
-        // Get commission summary
-        const [commissions, withdrawals] = await Promise.all([
-            AffiliateCommission.aggregate([
-                { $match: { affiliate: user._id } },
-                { 
-                    $group: {
-                        _id: null,
-                        totalEarned: { $sum: '$amount' },
-                        pendingAmount: { 
-                            $sum: { 
-                                $cond: [{ $eq: ['$status', 'pending'] }, '$amount', 0] 
-                            } 
-                        },
-                        paidAmount: { 
-                            $sum: { 
-                                $cond: [{ $eq: ['$status', 'paid'] }, '$amount', 0] 
-                            } 
-                        }
-                    }
-                }
-            ]),
-            AffiliateWithdrawal.aggregate([
-                { $match: { user: user._id } },
-                { 
-                    $group: {
-                        _id: null,
-                        totalWithdrawn: { $sum: '$amount' },
-                        pendingWithdrawals: { 
-                            $sum: { 
-                                $cond: [{ $eq: ['$status', 'pending'] }, '$amount', 0] 
-                            } 
-                        },
-                        completedWithdrawals: { 
-                            $sum: { 
-                                $cond: [{ $eq: ['$status', 'completed'] }, '$amount', 0] 
-                            } 
-                        }
-                    }
-                }
-            ])
-        ]);
-
-        const commissionData = commissions[0] || {
+        let commissionData = {
             totalEarned: 0,
             pendingAmount: 0,
             paidAmount: 0
         };
-
-
-        const withdrawalData = withdrawals[0] || {
+        
+        let withdrawalData = {
             totalWithdrawn: 0,
             pendingWithdrawals: 0,
             completedWithdrawals: 0
         };
+        
+        try {
+            const [commissions, withdrawals] = await Promise.all([
+                AffiliateCommission.aggregate([
+                    { $match: { affiliate: user._id } },
+                    { 
+                        $group: {
+                            _id: null,
+                            totalEarned: { $sum: '$amount' },
+                            pendingAmount: { 
+                                $sum: { 
+                                    $cond: [{ $eq: ['$status', 'pending'] }, '$amount', 0] 
+                                } 
+                            },
+                            paidAmount: { 
+                                $sum: { 
+                                    $cond: [{ $eq: ['$status', 'paid'] }, '$amount', 0] 
+                                } 
+                            }
+                        }
+                    }
+                ]),
+                AffiliateWithdrawal.aggregate([
+                    { $match: { user: user._id } },
+                    { 
+                        $group: {
+                            _id: null,
+                            totalWithdrawn: { $sum: '$amount' },
+                            pendingWithdrawals: { 
+                                $sum: { 
+                                    $cond: [{ $eq: ['$status', 'pending'] }, '$amount', 0] 
+                                } 
+                            },
+                            completedWithdrawals: { 
+                                $sum: { 
+                                    $cond: [{ $eq: ['$status', 'completed'] }, '$amount', 0] 
+                                } 
+                            }
+                        }
+                    }
+                ])
+            ]);
+            
+            commissionData = commissions[0] || commissionData;
+            withdrawalData = withdrawals[0] || withdrawalData;
+        } catch (error) {
+            console.error('Error fetching commission/withdrawal data:', error);
+            // Continue with default values if there's an error
+        }
 
-
-        res.json({
+        // Build the response object
+        const response = {
             success: true,
             profile: {
                 ...user.toObject(),
                 totalReferrals,
                 activeReferrals,
-                totalEarned: commissionData.totalEarned,
-                pendingAmount: commissionData.pendingAmount,
+                totalEarned: commissionData.totalEarned || 0,
+                pendingAmount: commissionData.pendingAmount || 0,
                 availableBalance: user.availableBalance || 0,
-                totalWithdrawn: withdrawalData.completedWithdrawals,
-                pendingWithdrawals: withdrawalData.pendingWithdrawals,
-                referralLink: `${process.env.FRONTEND_URL}/register?ref=${user.referralCode}`
+                totalWithdrawn: withdrawalData.completedWithdrawals || 0,
+                pendingWithdrawals: withdrawalData.pendingWithdrawals || 0,
+                referralLink: `${process.env.FRONTEND_URL || 'https://your-frontend-url.com'}/register?ref=${user.referralCode}`
             }
-        });
+        };
+
+        // Remove sensitive data
+        delete response.profile.password;
+        delete response.profile.__v;
+        
+        res.json(response);
     } catch (error) {
         console.error('Error fetching affiliate profile:', error);
         res.status(500).json({
