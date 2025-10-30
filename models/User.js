@@ -167,7 +167,8 @@ const userSchema = new Schema({
             type: Number,
             default: 0,
             min: 0
-        }
+        },
+        lastWithdrawalDate: Date
     },
     // Stats and metrics
     stats: {
@@ -190,8 +191,7 @@ const userSchema = new Schema({
         commissionShareActive: {
             type: Boolean,
             default: false
-        },
-        lastWithdrawalDate: Date
+        }
     },
     rating: {
         type: Number,
