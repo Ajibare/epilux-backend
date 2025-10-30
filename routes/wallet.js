@@ -1,5 +1,5 @@
 import express from 'express';
-import { verifyToken, isAdmin } from '../middleware/auth.js';
+import { verifyToken, admin } from '../middleware/auth.js';
 import { 
     getWalletBalance, 
     getWalletTransactions, 
@@ -22,7 +22,7 @@ router.get('/transactions', getWalletTransactions);
 router.post('/withdraw', requestWithdrawal);
 
 // Admin routes
-router.use(isAdmin);
+router.use(admin);
 
 // Process withdrawal (approve/reject)
 router.post('/withdraw/:id/process', async (req, res) => {

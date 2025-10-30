@@ -191,6 +191,7 @@ import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/user.js';
 import messageRoutes from './routes/messages.js';
 import cartRoutes from './routes/cart.js';
+import walletRoutes from './routes/wallet.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/cart', cartRoutes);
@@ -201,6 +202,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/wallet', walletRoutes);
 app.use('/api/commission', commissionRoutes);
 app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/commission/admin', commissionAdminRoutes);
