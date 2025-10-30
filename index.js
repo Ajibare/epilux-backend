@@ -190,8 +190,10 @@ import affiliateRoutes from './routes/affiliate.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/user.js';
 import messageRoutes from './routes/messages.js';
+import cartRoutes from './routes/cart.js';
 
 app.use('/api/auth', authRoutes);
+app.use('/api/cart', cartRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/affiliate', affiliateRoutes);
