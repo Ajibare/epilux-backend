@@ -140,6 +140,7 @@ const userSchema = new Schema({
             type: Number,
             default: 0
         }
+    },
     // Commission tracking
     commissionBalance: {
         pending: {
@@ -153,6 +154,16 @@ const userSchema = new Schema({
             min: 0
         },
         lifetime: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        pendingWithdrawal: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        totalWithdrawn: {
             type: Number,
             default: 0,
             min: 0
@@ -175,32 +186,14 @@ const userSchema = new Schema({
         totalWithdrawn: {
             type: Number,
             default: 0
-        }
+        },
         commissionShareActive: {
             type: Boolean,
             default: false
-        }
-    }, 
-    // In User model, update the commissionBalance schema:
-    commissionBalance: {
-        available: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        pendingWithdrawal: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        totalWithdrawn: {
-            type: Number,
-            default: 0,
-            min: 0
         },
         lastWithdrawalDate: Date
     },
-     rating: {
+    rating: {
         type: Number,
         default: 0
     },
