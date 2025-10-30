@@ -59,11 +59,21 @@ export const addToCart = async (req, res, next) => {
       return next(new AppError('Product ID is required', 400));
     }
 
-    // Get product details
-    console.log('Looking up product with ID:', productId);
-    const product = await Product.findById(productId);
+    // Get product details - try both ObjectId and slug lookups
+    console.log('Looking up product with ID/slug:', productId);
+    
+    let product;
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(productId);
+    
+    if (isObjectId) {
+      product = await Product.findById(productId);
+    } else {
+      // Try to find by slug if it's not a valid ObjectId
+      product = await Product.findOne({ slug: productId });
+    }
+    
     if (!product) {
-      console.log('Product not found with ID:', productId);
+      console.log('Product not found with ID/slug:', productId);
       return next(new NotFoundError('Product not found'));
     }
     console.log('Found product:', {

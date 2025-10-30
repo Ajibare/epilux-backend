@@ -8,15 +8,26 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 
-// Define uploads directory
+// Define uploads directory relative to the project root
 const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+const publicDir = path.join(process.cwd(), 'public');
 
 // Ensure uploads directory exists
 const ensureUploadsDir = () => {
-    if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
+    try {
+        // First ensure public directory exists
+        if (!fs.existsSync(publicDir)) {
+            fs.mkdirSync(publicDir, { recursive: true });
+        }
+        // Then ensure uploads directory exists
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        return uploadDir;
+    } catch (error) {
+        console.error('Error creating upload directories:', error);
+        throw error;
     }
-    return uploadDir;
 };
 
 // Configure storage
