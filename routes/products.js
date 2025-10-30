@@ -1,6 +1,7 @@
 import express from 'express';
 import Product from '../models/Product.js';
 import { catchAsync, NotFoundError } from '../middleware/errorHandler.js';
+import reviewRouter from './reviews.js';
 import {
     validateProductCreation,
     validateProductUpdate,
@@ -294,8 +295,11 @@ router.delete('/:id', validateMongoId, authenticate, authorize('admin'), catchAs
     });
 }));
 
+// Mount review routes
+router.use('/:productId/reviews', reviewRouter);
+
 // Get product categories (public)
-router.get('/categories/list', catchAsync(async (req, res) => {
+router.get('/categories', catchAsync(async (req, res) => {
     const categories = await Product.distinct('category', { isActive: true });
     
     res.json({
@@ -305,7 +309,7 @@ router.get('/categories/list', catchAsync(async (req, res) => {
 }));
 
 // Get product brands (public)
-router.get('/brands/list', catchAsync(async (req, res) => {
+router.get('/brands', catchAsync(async (req, res) => {
     const brands = await Product.distinct('brand', { isActive: true });
     
     res.json({

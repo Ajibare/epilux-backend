@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-const { Schema, model } = mongoose;
+const { Schema, model, Types } = mongoose;
 
 const productSchema = new Schema({
     name: {
@@ -40,6 +40,20 @@ const productSchema = new Schema({
         type: String,
         required: false
     },
+    averageRating: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5
+    },
+    numOfReviews: {
+        type: Number,
+        default: 0
+    },
+    reviews: [{
+        type: Types.ObjectId,
+        ref: 'Review'
+    }],
     images: [{
         url: {
             type: String,

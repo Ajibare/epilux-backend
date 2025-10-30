@@ -283,6 +283,154 @@ export const getWithdrawals = async (req, res) => {
 };
 
 
+// Get affiliate sales data
+export const getAffiliateSales = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        const transactions = await Transaction.find({ 
+            affiliateId: user._id,
+            status: 'completed'
+        }).sort({ timestamp: -1 });
+
+        res.json({
+            success: true,
+            data: transactions
+        });
+    } catch (error) {
+        console.error('Error fetching affiliate sales:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching affiliate sales'
+        });
+    }
+};
+
+// Get affiliate referrals
+export const getAffiliateReferrals = async (req, res) => {
+    try {
+        const { status } = req.query; // 'active', 'inactive', or undefined for all
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Calculate the date 30 days ago
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        // Build the query
+        let query = { referredBy: user.referralCode };
+        
+        // Apply status filter if provided
+        if (status === 'active') {
+            query.lastActive = { $gte: thirtyDaysAgo };
+        } else if (status === 'inactive') {
+            query.$or = [
+                { lastActive: { $lt: thirtyDaysAgo } },
+                { lastActive: { $exists: false } }
+            ];
+        }
+
+        const referredUsers = await User.find(query)
+            .select('firstName lastName email createdAt lastActive')
+            .sort({ lastActive: -1 });
+
+        const referrals = referredUsers.map(user => ({
+            id: user._id,
+            name: `${user.firstName} ${user.lastName}`,
+            email: user.email,
+            joinDate: user.createdAt,
+            lastActive: user.lastActive,
+            isActive: user.lastActive && user.lastActive >= thirtyDaysAgo
+        }));
+
+        // Get counts for summary
+        const activeCount = referrals.filter(r => r.isActive).length;
+        const inactiveCount = referrals.length - activeCount;
+
+        res.json({
+            success: true,
+            data: referrals,
+            summary: {
+                total: referrals.length,
+                active: activeCount,
+                inactive: inactiveCount
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching affiliate referrals:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching affiliate referrals'
+        });
+    }
+};
+
+// Record a new sale/commission
+export const recordSale = async (req, res) => {
+    try {
+        const { amount, description, referralCode } = req.body;
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        let referredByUser = null;
+        if (referralCode) {
+            referredByUser = await User.findOne({ referralCode });
+        }
+
+        const transaction = new Transaction({
+            userId: user._id,
+            referrerId: referredByUser ? referredByUser._id : null,
+            amount,
+            description: description || 'Affiliate sale',
+            status: 'completed',
+            type: referredByUser ? 'referral' : 'sale'
+        });
+
+        await transaction.save();
+
+        // Update affiliate stats if this is a referral sale
+        if (referredByUser) {
+            await User.findByIdAndUpdate(referredByUser._id, {
+                $inc: {
+                    totalSales: amount,
+                    totalCommission: amount * 0.1, // 10% commission rate
+                    totalReferrals: 1
+                },
+                $set: { lastActive: new Date() }
+            });
+        }
+
+        res.status(201).json({
+            success: true,
+            data: transaction
+        });
+    } catch (error) {
+        console.error('Error recording sale:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error recording sale'
+        });
+    }
+};
+
 // Get referral network
 export const getReferralNetwork = async (req, res) => {
     try {
