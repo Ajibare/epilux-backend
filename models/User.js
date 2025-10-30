@@ -30,6 +30,7 @@ const userSchema = new Schema({
         enum: ['user', 'admin', 'affiliate', 'marketer'],
         default: 'user'
     },
+    // User status and activity
     isActive: {
         type: Boolean,
         default: true
@@ -188,11 +189,7 @@ const userSchema = new Schema({
     totalRatings: {
         type: Number,
         default: 0
-    },
-    isActive: {
-        type: Boolean,
-        default: true
-    },
+    }
 },
 { timestamps: true });
 
