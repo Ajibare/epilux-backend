@@ -50,18 +50,28 @@ export const getCart = async (req, res, next) => {
  */
 export const addToCart = async (req, res, next) => {
   try {
+    console.log('Add to cart request body:', req.body);
     const { productId, quantity = 1 } = req.body;
 
     // Validate input
     if (!productId) {
+      console.log('Product ID is missing in request');
       return next(new AppError('Product ID is required', 400));
     }
 
     // Get product details
+    console.log('Looking up product with ID:', productId);
     const product = await Product.findById(productId);
     if (!product) {
+      console.log('Product not found with ID:', productId);
       return next(new NotFoundError('Product not found'));
     }
+    console.log('Found product:', {
+      id: product._id,
+      name: product.name,
+      stock: product.stock,
+      hasImages: product.images && product.images.length > 0
+    });
 
     // Check if product is in stock
     if (product.stock < quantity) {
