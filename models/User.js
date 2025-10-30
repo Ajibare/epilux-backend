@@ -85,19 +85,6 @@ const userSchema = new Schema({
         ref: 'User',
         default: null
     },
-    affiliateInfo: {
-        affiliateCode: String,
-        referredBy: String,
-        commissionRate: {
-            type: Number,
-            default: 0
-        },
-        totalEarnings: {
-            type: Number,
-            default: 0
-        }
-    },
-
     // Referral relationships
     referredBy: {
         user: {
@@ -128,6 +115,7 @@ const userSchema = new Schema({
     // Affiliate information
     affiliateInfo: {
         affiliateCode: String,
+        referredBy: String,
         commissionRate: {
             type: Number,
             default: 0
