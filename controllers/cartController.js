@@ -88,12 +88,16 @@ export const addToCart = async (req, res, next) => {
       cart.items[itemIndex].quantity += quantity;
     } else {
       // Add new item to cart
+      if (!product.images || product.images.length === 0) {
+        return next(new AppError('Product must have at least one image', 400));
+      }
+      
       cart.items.push({
         product: product._id,
         quantity,
         price: product.price,
         name: product.name,
-        image: product.images[0] || ''
+        image: product.images[0] // We've already checked that images exist
       });
     }
 
