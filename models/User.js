@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 const { Schema, model } = mongoose;
+
+// Helper function to generate a random referral code
+const generateReferralCode = () => {
+    return crypto.randomBytes(6).toString('hex').toUpperCase();
+};
 
 const userSchema = new Schema({
     email: {
@@ -29,6 +35,12 @@ const userSchema = new Schema({
         type: String,
         enum: ['user', 'admin', 'affiliate', 'marketer'],
         default: 'user'
+    },
+    // Unique referral code for the user
+    referralCode: {
+        type: String,
+        unique: true,
+        sparse: true
     },
     // User status and activity
     isActive: {
@@ -222,8 +234,14 @@ userSchema.methods.comparePassword = async function(enteredPassword) {
 };
 
 
-// Generate affiliate code if user is an affiliate
+// Generate referral code if it doesn't exist
 userSchema.pre('save', function(next) {
+    // If user doesn't have a referral code, generate one
+    if (!this.referralCode) {
+        this.referralCode = generateReferralCode();
+    }
+    
+    // Generate affiliate code if user is an affiliate
     if (this.role === 'affiliate' && !this.affiliateInfo.affiliateCode) {
         this.affiliateInfo.affiliateCode = `AFF${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
     }

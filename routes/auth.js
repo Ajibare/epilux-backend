@@ -292,12 +292,18 @@ router.post('/login', [
         // Generate token
         const token = generateToken(user._id, user.role);
 
+        // Generate referral link
+        const baseUrl = process.env.FRONTEND_URL || 'https://epilux48.vercel.app';
+        const referralLink = `${baseUrl}/register?ref=${user.referralCode}`;
+
         // Return user data without password
         const userResponse = {
             id: user._id,
             email: user.email,
             firstName: user.firstName,
             lastName: user.lastName,
+            referralCode: user.referralCode,
+            referralLink: referralLink,
             role: user.role,
             emailVerified: user.emailVerified,
             profile: user.profile,
@@ -442,7 +448,7 @@ router.get('/profile', async (req, res) => {
 
         const decoded = verifyToken(token);
         
-        const user = await User.findById(decoded.userId).select('-password');
+        const user = await User.findById(decoded.id).select('-password');
         
         if (!user) {
             return res.status(404).json({
@@ -450,20 +456,17 @@ router.get('/profile', async (req, res) => {
                 message: 'User not found'
             });
         }
-
+        
+        // Convert user to object and add referral link
+        const userObj = user.toObject();
+        const baseUrl = process.env.FRONTEND_URL || 'https://epilux48.vercel.app';
+        userObj.referralLink = `${baseUrl}/register?ref=${user.referralCode}`;
+        
         res.json({
             success: true,
-            user: {
-                id: user._id,
-                email: user.email,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                role: user.role,
-                emailVerified: user.emailVerified,
-                profile: user.profile,
-                affiliateInfo: user.affiliateInfo,
-                createdAt: user.createdAt,
-                lastLogin: user.lastLogin
+            data: {
+                ...userObj,
+                referralLink: userObj.referralLink
             }
         });
 
