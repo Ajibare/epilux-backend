@@ -65,36 +65,48 @@ const createProduct = async (req, res) => {
         let images = [];
         
         if (req.files && req.files.length > 0) {
-            // Upload each file to Cloudinary
-            const uploadPromises = req.files.map((file, index) => {
-                return new Promise((resolve, reject) => {
-                    cloudinary.uploader.upload(file.path, 
-                        { 
-                            folder: 'products',
-                            resource_type: 'auto' 
-                        }, 
-                        (error, result) => {
-                            // Delete file from server after upload
-                            fs.unlinkSync(file.path);
-                            
-                            if (error) {
-                                console.error('Error uploading to Cloudinary:', error);
-                                reject(error);
-                            } else {
-                                resolve({
-                                    url: result.secure_url,
-                                    publicId: result.public_id,
-                                    isPrimary: index === 0, // First image is primary by default
-                                    altText: `Image ${index + 1} of ${name}`
-                                });
-                            }
-                        }
-                    );
-                });
-            });
-
-            // Wait for all uploads to complete
-            images = await Promise.all(uploadPromises);
+            try {
+                // If using Cloudinary, upload to Cloudinary
+                if (useCloudinary) {
+                    const uploadPromises = req.files.map((file, index) => {
+                        return new Promise((resolve, reject) => {
+                            cloudinary.uploader.upload(file.path, 
+                                { 
+                                    folder: 'products',
+                                    resource_type: 'auto' 
+                                }, 
+                                (error, result) => {
+                                    // Delete file from server after upload
+                                    fs.unlinkSync(file.path);
+                                    
+                                    if (error) {
+                                        console.error('Error uploading to Cloudinary:', error);
+                                        reject(error);
+                                    } else {
+                                        resolve({
+                                            url: result.secure_url,
+                                            publicId: result.public_id,
+                                            isPrimary: index === 0,
+                                            altText: `Image ${index + 1} of ${name}`
+                                        });
+                                    }
+                                }
+                            );
+                        });
+                    });
+                    images = await Promise.all(uploadPromises);
+                } else {
+                    // If not using Cloudinary, use local file paths
+                    images = req.files.map((file, index) => ({
+                        url: `/uploads/${file.filename}`,
+                        isPrimary: index === 0,
+                        altText: `Image ${index + 1} of ${name}`
+                    }));
+                }
+            } catch (error) {
+                console.error('Error processing file uploads:', error);
+                // Continue with empty images array if there's an error
+            }
         } else if (req.body.images && Array.isArray(req.body.images)) {
             // If images are provided as URLs (for testing or manual entry)
             images = req.body.images.map((url, index) => ({

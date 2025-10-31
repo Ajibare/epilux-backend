@@ -169,6 +169,20 @@ const connectDB = async () => {
 connectDB();
 
 // Serve static files from the uploads directory
+const __dirname = path.resolve();
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'public', 'uploads');
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Create uploads directory if it doesn't exist
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log(`Created uploads directory at: ${uploadsDir}`);
+}
 app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
 
 // Reconnect on connection loss

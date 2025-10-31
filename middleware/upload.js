@@ -71,9 +71,8 @@ const getFileUrl = (filename) => {
 
 // Middleware for handling multiple image uploads
 const uploadProductImages = (req, res, next) => {
-    const uploadFiles = upload.array('images', 5);
-    
-    uploadFiles(req, res, (err) => {
+    // Use the upload middleware to process the files
+    upload.array('images', 5)(req, res, (err) => {
         if (err) {
             if (err.code === 'LIMIT_FILE_SIZE') {
                 return res.status(400).json({
@@ -98,12 +97,9 @@ const uploadProductImages = (req, res, next) => {
             });
         }
         
-        // Add file URLs to the request object
-        if (req.files && req.files.length > 0) {
-            req.fileUrls = req.files.map(file => ({
-                url: getFileUrl(file.filename),
-                path: file.path
-            }));
+        // Make sure req.files is always an array for the controller
+        if (!req.files) {
+            req.files = [];
         }
         
         next();
