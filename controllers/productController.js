@@ -9,14 +9,28 @@ const __dirname = dirname(__filename);
 
 
 
-// Configure uploads directory
-const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+// Configure uploads directory based on environment
+const isVercel = process.env.VERCEL === '1';
+const uploadsDir = isVercel 
+    ? '/tmp/uploads'  // Vercel's writable directory
+    : path.join(process.cwd(), 'public', 'uploads');
 
 // Ensure uploads directory exists
-if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log(`Created uploads directory at: ${uploadsDir}`);
-}
+const ensureUploadsDir = () => {
+    try {
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+            console.log(`Created uploads directory at: ${uploadsDir}`);
+        }
+        return uploadsDir;
+    } catch (error) {
+        console.error('Error creating uploads directory:', error);
+        throw error;
+    }
+};
+
+// Initialize uploads directory
+ensureUploadsDir();
 
 // Helper function to generate a unique filename
 const generateUniqueFilename = (originalname) => {

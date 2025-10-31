@@ -32,14 +32,19 @@ router.post(
 // Serve uploaded files
 router.get('/:filename', (req, res) => {
     try {
-        const filePath = join(process.cwd(), 'public', 'uploads', req.params.filename);
+        const isVercel = process.env.VERCEL === '1';
+        const filePath = isVercel
+            ? join('/tmp', 'uploads', req.params.filename)  // Vercel's tmp directory
+            : join(process.cwd(), 'public', 'uploads', req.params.filename);
         
         if (fs.existsSync(filePath)) {
             res.sendFile(filePath);
         } else {
+            console.error(`File not found: ${filePath}`);
             res.status(404).json({
                 success: false,
-                message: 'File not found'
+                message: 'File not found',
+                path: filePath
             });
         }
     } catch (error) {
