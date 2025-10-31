@@ -23,4 +23,23 @@ router.post(
     uploadMultipleImages
 );
 
+// Serve uploaded files in production
+if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
+    const fs = require('fs');
+    const path = require('path');
+    
+    router.get('/:filename', (req, res) => {
+        const filePath = path.join('/tmp/epilux-uploads', req.params.filename);
+        
+        if (fs.existsSync(filePath)) {
+            res.sendFile(filePath);
+        } else {
+            res.status(404).json({
+                success: false,
+                message: 'File not found'
+            });
+        }
+    });
+}
+
 export default router;

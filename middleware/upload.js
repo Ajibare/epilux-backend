@@ -8,9 +8,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 
-// Use system's temporary directory for uploads
-import os from 'os';
-const uploadDir = path.join(os.tmpdir(), 'epilux-uploads');
+// Use a consistent upload directory that works in both dev and production
+const isProduction = process.env.NODE_ENV === 'production';
+let uploadDir;
+
+if (isProduction && process.env.VERCEL) {
+    // In Vercel, use the /tmp directory which is writable
+    uploadDir = '/tmp/epilux-uploads';
+} else {
+    // In development, use a local uploads directory
+    uploadDir = path.join(process.cwd(), 'public', 'uploads');
+}
 
 // Ensure uploads directory exists
 const ensureUploadsDir = () => {
@@ -65,8 +73,12 @@ const upload = multer({
 // Helper function to get the public URL for a file
 const getFileUrl = (filename) => {
     if (!filename) return null;
-    // Return the full URL path that will be accessible from the frontend
-    return `/uploads/${path.basename(filename)}`;
+    
+    const baseUrl = process.env.NODE_ENV === 'production' && process.env.VERCEL
+        ? `${process.env.API_URL || 'https://epilux-backend.vercel.app'}/api/uploads`
+        : '/uploads';
+    
+    return `${baseUrl}/${path.basename(filename)}`;
 };
 
 // Middleware for handling multiple image uploads

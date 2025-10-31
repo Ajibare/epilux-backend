@@ -1,50 +1,27 @@
 import Product from '../models/Product.js';
-import { v2 as cloudinary } from 'cloudinary';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 
 
-// Configure Cloudinary if credentials are provided
-if (process.env.CLOUDINARY_CLOUD_NAME && 
-    process.env.CLOUDINARY_API_KEY && 
-    process.env.CLOUDINARY_API_SECRET) {
-    cloudinary.config({
-        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-        api_key: process.env.CLOUDINARY_API_KEY,
-        api_secret: process.env.CLOUDINARY_API_SECRET
-    });
+// Configure uploads directory
+const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+
+// Ensure uploads directory exists
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log(`Created uploads directory at: ${uploadsDir}`);
 }
 
-const useCloudinary = process.env.USE_CLOUDINARY === 'true';
-
-// Helper function to upload files to Cloudinary
-const uploadToCloudinary = async (file) => {
-    if (!useCloudinary) return null;
-    
-    try {
-        const result = await cloudinary.uploader.upload(file.path, {
-            folder: 'products'
-        });
-        return {
-            url: result.secure_url,
-            publicId: result.public_id
-        };
-    } catch (error) {
-        console.error('Error uploading to Cloudinary:', error);
-        return null;
-    }
-};
-
-// Helper function to delete from Cloudinary
-const deleteFromCloudinary = async (publicId) => {
-    if (!useCloudinary || !publicId) return;
-    
-    try {
-        await cloudinary.uploader.destroy(publicId);
-    } catch (error) {
-        console.error('Error deleting from Cloudinary:', error);
-    }
+// Helper function to generate a unique filename
+const generateUniqueFilename = (originalname) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    return uniqueSuffix + path.extname(originalname);
 };
 
 // Create new product
@@ -66,42 +43,24 @@ const createProduct = async (req, res) => {
         
         if (req.files && req.files.length > 0) {
             try {
-                // If using Cloudinary, upload to Cloudinary
-                if (useCloudinary) {
-                    const uploadPromises = req.files.map((file, index) => {
-                        return new Promise((resolve, reject) => {
-                            cloudinary.uploader.upload(file.path, 
-                                { 
-                                    folder: 'products',
-                                    resource_type: 'auto' 
-                                }, 
-                                (error, result) => {
-                                    // Delete file from server after upload
-                                    fs.unlinkSync(file.path);
-                                    
-                                    if (error) {
-                                        console.error('Error uploading to Cloudinary:', error);
-                                        reject(error);
-                                    } else {
-                                        resolve({
-                                            url: result.secure_url,
-                                            publicId: result.public_id,
-                                            isPrimary: index === 0,
-                                            altText: `Image ${index + 1} of ${name}`
-                                        });
-                                    }
-                                }
-                            );
-                        });
-                    });
-                    images = await Promise.all(uploadPromises);
-                } else {
-                    // If not using Cloudinary, use local file paths
-                    images = req.files.map((file, index) => ({
-                        url: `/uploads/${file.filename}`,
+                // Process each uploaded file
+                for (const [index, file] of req.files.entries()) {
+                    const filename = generateUniqueFilename(file.originalname);
+                    const filePath = path.join(uploadsDir, filename);
+                    
+                    // Move the file to the uploads directory
+                    await fs.promises.rename(file.path, filePath);
+                    
+                    // Add file info to images array
+                    images.push({
+                        url: `/uploads/${filename}`,
                         isPrimary: index === 0,
                         altText: `Image ${index + 1} of ${name}`
-                    }));
+                    });
+                }
+                
+                if (images.length === 0) {
+                    throw new Error('No valid images were uploaded');
                 }
             } catch (error) {
                 console.error('Error processing file uploads:', error);
