@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { globalErrorHandler, requestLogger } from './middleware/errorHandler.js';
 import config from './config/environment.js';
 import User from './models/User.js';
@@ -168,22 +169,32 @@ const connectDB = async () => {
 // Initialize database connection
 connectDB();
 
-// Serve static files from the uploads directory
-const __dirname = path.resolve();
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+// Configure static file serving based on environment
+const isVercel = process.env.VERCEL === '1';
+const uploadsDir = isVercel 
+    ? '/tmp/uploads'  // Vercel's writable directory
+    : path.join(process.cwd(), 'public', 'uploads');
 
 // Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, 'public', 'uploads');
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+const ensureUploadsDir = () => {
+    try {
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+            console.log(`Created uploads directory at: ${uploadsDir}`);
+        }
+        return uploadsDir;
+    } catch (error) {
+        console.error('Error creating uploads directory:', error);
+        // Don't crash if we can't create the directory
+        return uploadsDir;
+    }
+};
 
-// Create uploads directory if it doesn't exist
-if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log(`Created uploads directory at: ${uploadsDir}`);
-}
-app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
+// Initialize uploads directory
+ensureUploadsDir();
+
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(uploadsDir));
 
 // Reconnect on connection loss
 setInterval(async () => {
