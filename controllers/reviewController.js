@@ -2,14 +2,28 @@ import Review from '../models/Review.js';
 import Product from '../models/Product.js';
 import { NotFoundError } from '../middleware/errorHandler.js';
 
+import mongoose from 'mongoose';
+
 export const getProductReviews = async (req, res, next) => {
     try {
-        const reviews = await Review.find({ 
-            product: req.params.productId,
-            isApproved: true 
-        })
-        .populate('user', 'name email')
-        .sort({ createdAt: -1 });
+        let productId = req.params.productId;
+        let query = { isApproved: true };
+        
+        // Check if the productId is a valid ObjectId
+        if (mongoose.Types.ObjectId.isValid(productId)) {
+            query.product = productId;
+        } else {
+            // If not a valid ObjectId, assume it's a slug and find the product by slug
+            const product = await Product.findOne({ slug: productId });
+            if (!product) {
+                throw new NotFoundError('Product not found');
+            }
+            query.product = product._id;
+        }
+
+        const reviews = await Review.find(query)
+            .populate('user', 'name email')
+            .sort({ createdAt: -1 });
 
         res.json({
             success: true,
@@ -24,10 +38,15 @@ export const getProductReviews = async (req, res, next) => {
 export const createReview = async (req, res, next) => {
     try {
         const { rating, comment } = req.body;
-        const productId = req.params.productId;
+        let productId = req.params.productId;
+        let product;
         
-        // Check if product exists
-        const product = await Product.findById(productId);
+        // Check if product exists - handle both slug and ObjectId
+        if (mongoose.Types.ObjectId.isValid(productId)) {
+            product = await Product.findById(productId);
+        } else {
+            product = await Product.findOne({ slug: productId });
+        }
         if (!product) {
             throw new NotFoundError('Product not found');
         }
@@ -69,13 +88,29 @@ export const createReview = async (req, res, next) => {
 export const updateReview = async (req, res, next) => {
     try {
         const { rating, comment } = req.body;
-        const review = await Review.findById(req.params.id);
+        const reviewId = req.params.id;
+        let productId = req.params.productId;
+
+        // Find the product to get its ID if a slug was provided
+        if (!mongoose.Types.ObjectId.isValid(productId)) {
+            const product = await Product.findOne({ slug: productId });
+            if (!product) {
+                throw new NotFoundError('Product not found');
+            }
+            productId = product._id;
+        }
+
+        // Find the review
+        const review = await Review.findOne({
+            _id: reviewId,
+            product: productId,
+            user: req.user.id // Ensure the user owns the review
+        });
 
         if (!review) {
             throw new NotFoundError('Review not found');
         }
 
-        // Check if user is the review owner or admin
         if (review.user.toString() !== req.user.id && req.user.role !== 'admin') {
             return res.status(403).json({
                 success: false,
@@ -106,13 +141,29 @@ export const updateReview = async (req, res, next) => {
 
 export const deleteReview = async (req, res, next) => {
     try {
-        const review = await Review.findById(req.params.id);
+        const reviewId = req.params.id;
+        let productId = req.params.productId;
+
+        // Find the product to get its ID if a slug was provided
+        if (!mongoose.Types.ObjectId.isValid(productId)) {
+            const product = await Product.findOne({ slug: productId });
+            if (!product) {
+                throw new NotFoundError('Product not found');
+            }
+            productId = product._id;
+        }
+
+        // Find and delete the review
+        const review = await Review.findOneAndDelete({
+            _id: reviewId,
+            product: productId,
+            user: req.user.id // Ensure the user owns the review
+        });
 
         if (!review) {
             throw new NotFoundError('Review not found');
         }
 
-        // Check if user is the review owner or admin
         if (review.user.toString() !== req.user.id && req.user.role !== 'admin') {
             return res.status(403).json({
                 success: false,
