@@ -2,6 +2,12 @@ import express from 'express';
 import { upload, uploadProductImages } from '../middleware/upload.js';
 import { uploadImage, uploadMultipleImages } from '../controllers/uploadController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import fs from 'fs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const router = express.Router();
 
@@ -23,13 +29,10 @@ router.post(
     uploadMultipleImages
 );
 
-// Serve uploaded files in production
-if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
-    const fs = require('fs');
-    const path = require('path');
-    
-    router.get('/:filename', (req, res) => {
-        const filePath = path.join('/tmp/epilux-uploads', req.params.filename);
+// Serve uploaded files
+router.get('/:filename', (req, res) => {
+    try {
+        const filePath = join(process.cwd(), 'public', 'uploads', req.params.filename);
         
         if (fs.existsSync(filePath)) {
             res.sendFile(filePath);
@@ -39,7 +42,13 @@ if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
                 message: 'File not found'
             });
         }
-    });
-}
+    } catch (error) {
+        console.error('Error serving file:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error serving file'
+        });
+    }
+});
 
 export default router;
