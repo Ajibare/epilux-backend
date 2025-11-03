@@ -74,11 +74,26 @@ const upload = multer({
 const getFileUrl = (filename) => {
     if (!filename) return null;
     
-    const baseUrl = process.env.NODE_ENV === 'production' && process.env.VERCEL
-        ? `${process.env.API_URL || 'https://epilux-backend.vercel.app'}/api/uploads`
-        : '/uploads';
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isVercel = process.env.VERCEL === '1';
     
-    return `${baseUrl}/${path.basename(filename)}`;
+    let baseUrl;
+    
+    if (isVercel) {
+        // For Vercel deployment
+        baseUrl = process.env.API_URL || 'https://your-vercel-app.vercel.app';
+    } else if (isProduction) {
+        // For other production environments
+        baseUrl = process.env.API_URL || 'https://your-production-url.com';
+    } else {
+        // For local development
+        baseUrl = `http://localhost:${process.env.PORT || 5000}`;
+    }
+    
+    // Ensure the filename doesn't start with a slash to avoid double slashes
+    const cleanFilename = filename.startsWith('/') ? filename.substring(1) : filename;
+    
+    return `${baseUrl}/uploads/${path.basename(cleanFilename)}`;
 };
 
 // Middleware for handling multiple image uploads

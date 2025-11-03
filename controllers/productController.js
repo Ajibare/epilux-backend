@@ -65,11 +65,14 @@ const createProduct = async (req, res) => {
                     // Move the file to the uploads directory
                     await fs.promises.rename(file.path, filePath);
                     
-                    // Add file info to images array
+                    // Add file info to images array with full URL
+                    const imageUrl = `/uploads/${filename}`;
                     images.push({
-                        url: `/uploads/${filename}`,
+                        url: imageUrl,
                         isPrimary: index === 0,
-                        altText: `Image ${index + 1} of ${name}`
+                        altText: `Image ${index + 1} of ${name}`,
+                        // Store both relative and absolute URLs for flexibility
+                        absoluteUrl: req.protocol + '://' + req.get('host') + imageUrl
                     });
                 }
                 

@@ -169,32 +169,65 @@ const connectDB = async () => {
 // Initialize database connection
 connectDB();
 
-// Configure static file serving based on environment
+// Configure and initialize uploads directory
 const isVercel = process.env.VERCEL === '1';
-const uploadsDir = isVercel 
-    ? '/tmp/uploads'  // Vercel's writable directory
-    : path.join(process.cwd(), 'public', 'uploads');
-
-// Ensure uploads directory exists
-const ensureUploadsDir = () => {
+const uploadsDir = (() => {
+    const dir = isVercel 
+        ? '/tmp/uploads'  // Vercel's writable directory
+        : path.join(process.cwd(), 'public', 'uploads');
+    
     try {
-        if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-            console.log(`Created uploads directory at: ${uploadsDir}`);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true, mode: 0o777 });
+            console.log(`Created uploads directory at: ${dir}`);
+        } else if (process.env.NODE_ENV !== 'production') {
+            console.log(`Using existing uploads directory: ${dir}`);
         }
-        return uploadsDir;
+        return dir;
     } catch (error) {
         console.error('Error creating uploads directory:', error);
-        // Don't crash if we can't create the directory
-        return uploadsDir;
+        // Fallback to current directory if temp directory is not writable
+        const fallbackDir = path.join(process.cwd(), 'temp-uploads');
+        if (!fs.existsSync(fallbackDir)) {
+            fs.mkdirSync(fallbackDir, { recursive: true, mode: 0o777 });
+        }
+        console.warn(`Falling back to temporary directory: ${fallbackDir}`);
+        return fallbackDir;
     }
-};
+})();
 
-// Initialize uploads directory
-ensureUploadsDir();
+// Serve static files from the uploads directory with proper headers
+app.use('/uploads', express.static(uploadsDir, {
+    setHeaders: (res, filePath) => {
+        // Set proper cache headers for better performance
+        res.set('Cache-Control', 'public, max-age=31536000');
+        // Allow CORS for images
+        res.set('Access-Control-Allow-Origin', '*');
+        
+        // Set content type based on file extension
+        const ext = path.extname(filePath).toLowerCase();
+        switch (ext) {
+            case '.jpg':
+            case '.jpeg':
+                res.set('Content-Type', 'image/jpeg');
+                break;
+            case '.png':
+                res.set('Content-Type', 'image/png');
+                break;
+            case '.webp':
+                res.set('Content-Type', 'image/webp');
+                break;
+            case '.gif':
+                res.set('Content-Type', 'image/gif');
+                break;
+            default:
+                // For unknown types, let Express handle it
+                break;
+        }
+    }
+}));
 
-// Serve static files from the uploads directory
-app.use('/uploads', express.static(uploadsDir));
+console.log(`Serving static files from: ${uploadsDir}`);
 
 // Reconnect on connection loss
 setInterval(async () => {
