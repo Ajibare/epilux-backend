@@ -33,34 +33,74 @@ export const getReferrals = async (req, res) => {
 };
 
 /**
- * @desc    Get marketer's assigned orders
+ * @desc    Get marketer's assigned orders with pagination and filtering
  * @route   GET /api/marketer/orders
  * @access  Private/Marketer
+ * @query   {string} [status] - Filter by order status
+ * @query   {number} [page=1] - Page number for pagination
+ * @query   {number} [limit=10] - Number of items per page
  */
 export const getAssignedOrders = async (req, res) => {
     try {
-        const { status } = req.query;
+        const { status, page = 1, limit = 10 } = req.query;
+        const skip = (page - 1) * limit;
+        
         const query = { marketer: req.user.id };
         
+        // Filter by status if provided
         if (status) {
             query.status = status;
         }
 
+        // Get orders with pagination
         const orders = await Order.find(query)
             .populate('userId', 'name email phone')
-            .populate('items.productId', 'name price')
-            .sort('-createdAt');
+            .populate('items.productId', 'name price images')
+            .sort({ createdAt: -1 })
+            .skip(parseInt(skip))
+            .limit(parseInt(limit))
+            .lean();
+            
+        const total = await Order.countDocuments(query);
+        
+        // Format the response
+        const formattedOrders = orders.map(order => ({
+            _id: order._id,
+            orderNumber: order.orderNumber,
+            status: order.status,
+            total: order.total,
+            items: order.items.map(item => ({
+                productId: item.productId?._id,
+                name: item.name || item.productId?.name,
+                quantity: item.quantity,
+                price: item.price,
+                image: item.productId?.images?.[0]?.url || null
+            })),
+            customer: {
+                name: order.userId?.name,
+                phone: order.userId?.phone,
+                email: order.userId?.email
+            },
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt
+        }));
 
         res.status(200).json({
             success: true,
-            count: orders.length,
-            data: orders
+            data: formattedOrders,
+            pagination: {
+                total,
+                page: parseInt(page),
+                pages: Math.ceil(total / limit),
+                limit: parseInt(limit)
+            }
         });
     } catch (error) {
         console.error('Get assigned orders error:', error);
         res.status(500).json({
             success: false,
-            message: 'Server error'
+            message: 'Error fetching orders',
+            error: error.message
         });
     }
 };

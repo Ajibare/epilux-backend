@@ -619,6 +619,73 @@ const getProductRatingSummary = async (req, res) => {
     }
 };
 
+// Get orders assigned to current marketer
+const getMarketerOrders = async (req, res) => {
+    try {
+        const { status, page = 1, limit = 10 } = req.query;
+        const skip = (page - 1) * limit;
+        
+        const query = { marketer: req.user.id };
+        
+        // Filter by status if provided
+        if (status) {
+            query.status = status;
+        }
+        
+        // Get orders with pagination
+        const orders = await Order.find(query)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(parseInt(limit))
+            .populate('userId', 'name email phone')
+            .populate('items.productId', 'name price images')
+            .lean();
+            
+        const total = await Order.countDocuments(query);
+        
+        // Format the response
+        const formattedOrders = orders.map(order => ({
+            _id: order._id,
+            orderNumber: order.orderNumber,
+            status: order.status,
+            total: order.total,
+            items: order.items.map(item => ({
+                productId: item.productId?._id,
+                name: item.name,
+                quantity: item.quantity,
+                price: item.price,
+                image: item.productId?.images?.[0]?.url || null
+            })),
+            customer: {
+                name: order.userId?.name,
+                phone: order.userId?.phone,
+                email: order.userId?.email
+            },
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt
+        }));
+        
+        res.json({
+            success: true,
+            data: formattedOrders,
+            pagination: {
+                total,
+                page: parseInt(page),
+                pages: Math.ceil(total / limit),
+                limit: parseInt(limit)
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching marketer orders:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching orders',
+            error: error.message
+        });
+    }
+};
+
 export {
     createOrder,
     cancelOrder,
@@ -637,5 +704,6 @@ export {
     rateProduct,
     getProductRatings,
     getUserRatings,
-    getProductRatingSummary
+    getProductRatingSummary,
+    getMarketerOrders
 };
