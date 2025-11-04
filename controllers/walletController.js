@@ -5,12 +5,39 @@ import { v4 as uuidv4 } from 'uuid';
 // Get wallet balance
 export const getWalletBalance = async (req, res) => {
     try {
-        const wallet = await Wallet.findOne({ userId: req.user._id });
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        const wallet = await Wallet.findOne({ userId: req.user.id });
         
         if (!wallet) {
-            return res.status(404).json({
-                success: false,
-                message: 'Wallet not found'
+            // Create a new wallet if not found
+            const newWallet = new Wallet({
+                userId: req.user.id,
+                availableBalance: 0,
+                lockedAmount: 0,
+                totalBalance: 0,
+                totalEarned: 0,
+                totalWithdrawn: 0,
+                currency: 'NGN'
+            });
+            await newWallet.save();
+            
+            return res.json({
+                success: true,
+                data: {
+                    availableBalance: 0,
+                    lockedAmount: 0,
+                    totalBalance: 0,
+                    totalEarned: 0,
+                    totalWithdrawn: 0,
+                    currency: 'NGN',
+                    lastUpdated: new Date()
+                }
             });
         }
 
@@ -41,7 +68,14 @@ export const getWalletTransactions = async (req, res) => {
         const { page = 1, limit = 10, type } = req.query;
         const skip = (page - 1) * limit;
         
-        const query = { userId: req.user._id };
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        const query = { userId: req.user.id };
         if (type) {
             query.type = type;
         }

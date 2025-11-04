@@ -165,11 +165,35 @@ const getProducts = async (req, res) => {
         const sortOptions = {};
         sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
-        const products = await Product.find(query)
+        let products = await Product.find(query)
             .sort(sortOptions)
             .limit(limit * 1)
             .skip((page - 1) * limit)
             .lean();
+
+        // Process each product to ensure images are properly formatted
+        products = products.map(product => {
+            if (Array.isArray(product.images) && product.images.length > 0) {
+                // Sort images to put primary image first
+                product.images.sort((a, b) => {
+                    if (a.isPrimary) return -1;
+                    if (b.isPrimary) return 1;
+                    return 0;
+                });
+
+                // If no primary image is set, use the first image as primary
+                if (product.images.length > 0 && !product.images[0].isPrimary) {
+                    product.images[0].isPrimary = true;
+                }
+
+                // Add primaryImage field for easy access
+                product.primaryImage = product.images[0]?.url || null;
+            } else {
+                product.images = [];
+                product.primaryImage = null;
+            }
+            return product;
+        });
 
         const count = await Product.countDocuments(query);
 
@@ -203,26 +227,35 @@ const getProduct = async (req, res) => {
             });
         }
 
-        // Format the response
-        const response = {
-            success: true,
-            data: {
-                ...product,
-                stock: product.stock || 0,
-                isInStock: product.stock > 0,
-                images: product.images || [],
-                primaryImage: product.images?.find(img => img.isPrimary)?.url || 
-                             (product.images?.length > 0 ? product.images[0].url : null)
-            }
-        };
+        // Ensure images is an array
+        if (!Array.isArray(product.images)) {
+            product.images = [];
+        } else {
+            // Sort images to put primary image first
+            product.images.sort((a, b) => {
+                if (a.isPrimary) return -1;
+                if (b.isPrimary) return 1;
+                return 0;
+            });
 
-        res.json(response);
+            // If no primary image is set, use the first image as primary
+            if (product.images.length > 0 && !product.images[0].isPrimary) {
+                product.images[0].isPrimary = true;
+            }
+        }
+
+        // Add a helper field for the primary image URL
+        product.primaryImage = product.images.length > 0 ? product.images[0]?.url : null;
+
+        res.json({
+            success: true,
+            product
+        });
     } catch (error) {
         console.error('Error fetching product:', error);
         res.status(500).json({
             success: false,
-            message: 'Error fetching product',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: 'Error fetching product'
         });
     }
 };

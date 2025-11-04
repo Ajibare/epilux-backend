@@ -14,8 +14,25 @@ export const getCart = async (req, res, next) => {
       return next(new AppError('User not authenticated', 401));
     }
 
-    const cart = await Cart.findOne({ user: req.user._id })
-      .populate('items.product', 'name price images stock');
+    let cart = await Cart.findOne({ user: req.user._id });
+    
+    // If cart exists, populate product details
+    if (cart) {
+      // Get fresh product data to ensure we have the latest info
+      for (const item of cart.items) {
+        const product = await Product.findById(item.product);
+        if (product) {
+          // Update item with latest product data
+          item.productDetails = {
+            name: product.name,
+            price: product.price,
+            stock: product.stock,
+            sku: product.sku,
+            images: product.images || []
+          };
+        }
+      }
+    }
 
     if (!cart) {
       return res.status(200).json({
@@ -98,26 +115,49 @@ export const addToCart = async (req, res, next) => {
       });
     }
 
+    // Process product images
+    let primaryImage = '';
+    let productImages = [];
+    
+    if (product.images && product.images.length > 0) {
+      // Sort images to get primary image first
+      const sortedImages = [...product.images].sort((a, b) => {
+        if (a.isPrimary) return -1;
+        if (b.isPrimary) return 1;
+        return 0;
+      });
+      
+      primaryImage = sortedImages[0]?.url || '';
+      productImages = sortedImages.map(img => ({
+        url: img.url,
+        isPrimary: img.isPrimary || false,
+        altText: img.altText || product.name
+      }));
+    } else {
+      return next(new AppError('Product must have at least one image', 400));
+    }
+
     // Check if product already in cart
     const itemIndex = cart.items.findIndex(
-      item => item.product.toString() === productId
+      item => item.product.toString() === product._id.toString()
     );
 
     if (itemIndex > -1) {
       // Update quantity if product already in cart
       cart.items[itemIndex].quantity += quantity;
     } else {
-      // Add new item to cart
-      if (!product.images || product.images.length === 0) {
-        return next(new AppError('Product must have at least one image', 400));
-      }
-      
+      // Add new item to cart with all images and primary image
       cart.items.push({
         product: product._id,
         quantity,
         price: product.price,
         name: product.name,
-        image: product.images[0] // We've already checked that images exist
+        image: primaryImage,
+        images: productImages,
+        productDetails: {
+          stock: product.stock,
+          sku: product.sku || ''
+        }
       });
     }
 
