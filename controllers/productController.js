@@ -39,6 +39,138 @@ const generateUniqueFilename = (originalname) => {
 };
 
 // Create new product
+// const createProduct = async (req, res) => {
+//     try {
+//         const {
+//             name,
+//             description,
+//             price,
+//             stock = 0,
+//             category,
+//             isFeatured = false,
+//             discount = 0,
+//             specifications = {}
+//         } = req.body;
+
+
+//          // Validate required fields
+//         const missingFields = [];
+//         if (!name) missingFields.push('name');
+//         if (!description) missingFields.push('description');
+//         if (price === undefined) missingFields.push('price');
+//         if (!category) missingFields.push('category');
+
+//         if (missingFields.length > 0) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: `Missing required fields: ${missingFields.join(', ')}`,
+//                 fields: missingFields
+//             });
+//         }
+
+//         // Validate price is a valid positive number
+//         const priceValue = parseFloat(price);
+//         if (isNaN(priceValue) || priceValue < 0) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: 'Price must be a valid positive number',
+//                 field: 'price'
+//             });
+//         }
+
+
+//         // Handle file uploads
+//         let images = [];
+        
+//         if (req.files && req.files.length > 0) {
+//             try {
+//                 // Process each uploaded file
+//                 for (const [index, file] of req.files.entries()) {
+//                     const filename = generateUniqueFilename(file.originalname);
+//                     const filePath = path.join(uploadsDir, filename);
+                    
+//                     // Move the file to the uploads directory
+//                     await fs.promises.rename(file.path, filePath);
+                    
+//                     // Add file info to images array with full URL
+//                     const imageUrl = `/uploads/${filename}`;
+//                     images.push({
+//                         url: imageUrl,
+//                         isPrimary: index === 0,
+//                         altText: `Image ${index + 1} of ${name}`,
+//                         // Store both relative and absolute URLs for flexibility
+//                         absoluteUrl: req.protocol + '://' + req.get('host') + imageUrl
+//                     });
+//                 }
+                
+//                 if (images.length === 0) {
+//                     throw new Error('No valid images were uploaded');
+//                 }
+//             } catch (error) {
+//                 console.error('Error processing file uploads:', error);
+//                 // Continue with empty images array if there's an error
+//             }
+//         } else if (req.body.images && Array.isArray(req.body.images)) {
+//             // If images are provided as URLs (for testing or manual entry)
+//             images = req.body.images.map((url, index) => ({
+//                 url,
+//                 publicId: null,
+//                 isPrimary: index === 0,
+//                 altText: `Image ${index + 1} of ${name}`
+//             }));
+//         }
+
+//         // const productData = {
+//         //     name,
+//         //     description,
+//         //     price: parseFloat(price),
+//         //     stock: parseInt(stock, 10) || 0,
+//         //     category,
+//         //     images,
+//         //     isFeatured: isFeatured === 'true' || isFeatured === true,
+//         //     discount: parseFloat(discount) || 0,
+//         //     specifications: typeof specifications === 'string' ? JSON.parse(specifications) : specifications,
+//         //     createdBy: req.user.id,
+//         //     isInStock: parseInt(stock, 10) > 0
+//         // };
+
+
+//          const productData = {
+//             name: name.trim(),
+//             description: description.trim(),
+//             price: priceValue,
+//             stock: Math.max(0, parseInt(stock, 10) || 0),
+//             category: category.trim(),
+//             images,
+//             isFeatured: isFeatured === 'true' || isFeatured === true,
+//             discount: Math.max(0, Math.min(parseFloat(discount) || 0, 100)), // Ensure discount is between 0-100
+//             specifications: typeof specifications === 'string' ? 
+//                 JSON.parse(specifications) : 
+//                 (specifications || {}),
+//             createdBy: req.user?.id,
+//             isInStock: (parseInt(stock, 10) || 0) > 0
+//         };
+
+//         const product = new Product(productData);
+
+//         await product.save();
+
+//         res.status(201).json({
+//             success: true,
+//             message: 'Product created successfully',
+//             data: product
+//         });
+//     } catch (error) {
+//         console.error('Error creating product:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Error creating product',
+//             error: error.message
+//         });
+//     }
+// };
+
+
 const createProduct = async (req, res) => {
     try {
         const {
@@ -52,11 +184,39 @@ const createProduct = async (req, res) => {
             specifications = {}
         } = req.body;
 
+        // Validate required fields
+        const missingFields = [];
+        if (!name) missingFields.push('name');
+        if (!description) missingFields.push('description');
+        if (price === undefined) missingFields.push('price');
+        if (!category) missingFields.push('category');
+
+        if (missingFields.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Missing required fields: ${missingFields.join(', ')}`,
+                fields: missingFields
+            });
+        }
+
+        // Validate price is a valid positive number
+        const priceValue = parseFloat(price);
+        if (isNaN(priceValue) || priceValue < 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Price must be a valid positive number',
+                field: 'price'
+            });
+        }
+
         // Handle file uploads
         let images = [];
         
         if (req.files && req.files.length > 0) {
             try {
+                // Ensure uploads directory exists
+                ensureUploadsDir();
+                
                 // Process each uploaded file
                 for (const [index, file] of req.files.entries()) {
                     const filename = generateUniqueFilename(file.originalname);
@@ -71,57 +231,81 @@ const createProduct = async (req, res) => {
                         url: imageUrl,
                         isPrimary: index === 0,
                         altText: `Image ${index + 1} of ${name}`,
-                        // Store both relative and absolute URLs for flexibility
                         absoluteUrl: req.protocol + '://' + req.get('host') + imageUrl
                     });
                 }
-                
-                if (images.length === 0) {
-                    throw new Error('No valid images were uploaded');
-                }
             } catch (error) {
                 console.error('Error processing file uploads:', error);
-                // Continue with empty images array if there's an error
+                // Don't fail the entire request if there's an image processing error
+                // Continue with empty images array
             }
         } else if (req.body.images && Array.isArray(req.body.images)) {
-            // If images are provided as URLs (for testing or manual entry)
+            // If images are provided as URLs
             images = req.body.images.map((url, index) => ({
                 url,
-                publicId: null,
                 isPrimary: index === 0,
                 altText: `Image ${index + 1} of ${name}`
             }));
         }
 
+        // Prepare product data
         const productData = {
-            name,
-            description,
-            price: parseFloat(price),
-            stock: parseInt(stock, 10) || 0,
-            category,
+            name: name.trim(),
+            description: description.trim(),
+            price: priceValue,
+            stock: Math.max(0, parseInt(stock, 10) || 0),
+            category: category.trim(),
             images,
             isFeatured: isFeatured === 'true' || isFeatured === true,
-            discount: parseFloat(discount) || 0,
-            specifications: typeof specifications === 'string' ? JSON.parse(specifications) : specifications,
-            createdBy: req.user.id,
-            isInStock: parseInt(stock, 10) > 0
+            discount: Math.max(0, Math.min(parseFloat(discount) || 0, 100)), // Ensure discount is between 0-100
+            specifications: typeof specifications === 'string' ? 
+                JSON.parse(specifications) : 
+                (specifications || {}),
+            createdBy: req.user?.id,
+            isInStock: (parseInt(stock, 10) || 0) > 0
         };
 
+        // Create and save the product
         const product = new Product(productData);
-
         await product.save();
 
+        // Send success response
         res.status(201).json({
             success: true,
             message: 'Product created successfully',
             data: product
         });
+
     } catch (error) {
         console.error('Error creating product:', error);
+        
+        // Handle specific error types
+        if (error.name === 'ValidationError') {
+            const errors = Object.values(error.errors).map(err => ({
+                field: err.path,
+                message: err.message
+            }));
+            
+            return res.status(400).json({
+                success: false,
+                message: 'Validation error',
+                errors
+            });
+        }
+
+        // Handle JSON parse error
+        if (error.name === 'SyntaxError' && error.message.includes('JSON')) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid JSON in specifications'
+            });
+        }
+
+        // Generic error response
         res.status(500).json({
             success: false,
             message: 'Error creating product',
-            error: error.message
+            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
         });
     }
 };
