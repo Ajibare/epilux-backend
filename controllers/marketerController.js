@@ -237,6 +237,47 @@ export const getDashboard = async (req, res) => {
         });
     }
 };
+/**
+ * @desc    Get all marketers and their assigned products
+ * @route   GET /api/admin/marketers
+ * @access  Private/Admin
+ */
+export const getAllMarketersWithProducts = async (req, res) => {
+    try {
+        // Get all users with role 'marketer'
+        const marketers = await User.find({ role: 'marketer' })
+            .select('name email phone status createdAt')
+            .lean();
+
+        // Get products assigned to each marketer
+        const marketersWithProducts = await Promise.all(
+            marketers.map(async (marketer) => {
+                const products = await Product.find({ assignedMarketer: marketer._id })
+                    .select('name price stock images status')
+                    .lean();
+                
+                return {
+                    ...marketer,
+                    assignedProducts: products,
+                    productCount: products.length
+                };
+            })
+        );
+
+        res.status(200).json({
+            success: true,
+            count: marketersWithProducts.length,
+            data: marketersWithProducts
+        });
+
+    } catch (error) {
+        console.error('Get all marketers error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
 
 export default {
     getDashboard,

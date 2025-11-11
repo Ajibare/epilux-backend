@@ -51,4 +51,15 @@ router.get('/orders/:id', protect, async (req, res) => {
     }
 });
 
+
+
+
+
+
+// Add this near the top with other imports
+import { getAllMarketersWithProducts } from '../controllers/marketerController.js';
+
+// Add this route (before the export statement)
+router.get('/admin/marketers', protect, authorize('admin'), getAllMarketersWithProducts);
+
 export default router;
