@@ -279,6 +279,54 @@ export const getAllMarketersWithProducts = async (req, res) => {
     }
 };
 
+// In marketerController.js
+export const assignProductToMarketer = async (req, res) => {
+    try {
+        const { productId, marketerId } = req.body;
+
+        // Verify marketer exists and is a marketer
+        const marketer = await User.findOne({ 
+            _id: marketerId, 
+            role: 'marketer' 
+        });
+
+        if (!marketer) {
+            return res.status(404).json({
+                success: false,
+                message: 'Marketer not found'
+            });
+        }
+
+        // Assign product to marketer
+        const product = await Product.findByIdAndUpdate(
+            productId,
+            { assignedMarketer: marketerId },
+            { new: true, runValidators: true }
+        );
+
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Product assigned to marketer successfully',
+            data: product
+        });
+
+    } catch (error) {
+        console.error('Assign product error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
+
 export default {
     getDashboard,
     getReferrals,
