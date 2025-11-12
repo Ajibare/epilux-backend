@@ -1,7 +1,7 @@
 import express from 'express';
 import { 
-    updateDefaultRate, 
-    setUserRate, 
+    updateCommissionRate,
+    getCommissionSettings,
     requestWithdrawal, 
     processWithdrawal, 
     getWithdrawalHistory 
@@ -14,12 +14,10 @@ import fs from 'fs';
 
 const router = express.Router();
 
-// Admin routes
-router.route('/rates/default')
-    .put(protect, authorize(ROLES.ADMIN), (req, res) => updateDefaultRate(req, res));
-
-router.route('/rates/user/:userId')
-    .put(protect, authorize(ROLES.ADMIN), (req, res) => setUserRate(req, res));
+// Commission settings routes
+router.route('/settings')
+    .get(protect, authorize(ROLES.ADMIN), (req, res) => getCommissionSettings(req, res))
+    .put(protect, authorize(ROLES.ADMIN), (req, res) => updateCommissionRate(req, res));
 
 // Withdrawal routes
 router.route('/withdraw')

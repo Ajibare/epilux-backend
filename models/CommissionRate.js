@@ -1,37 +1,20 @@
 import mongoose from 'mongoose';
 
 const commissionRateSchema = new mongoose.Schema({
-    // Default commission rate (10%)
-    defaultRate: {
+    // Global commission rate (e.g., 10 for 10%)
+    commissionRate: {
         type: Number,
         required: true,
         min: 0,
         max: 100,
         default: 10
     },
-    // Special rates for specific users (overrides default)
-    userRates: [{
-        user: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true
-        },
-        rate: {
-            type: Number,
-            required: true,
-            min: 0,
-            max: 100
-        },
-        updatedBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true
-        },
-        updatedAt: {
-            type: Date,
-            default: Date.now
-        }
-    }],
+    // Roles that are excluded from earning commissions
+    excludedRoles: {
+        type: [String],
+        default: ['admin', 'marketer'],
+        enum: ['admin', 'marketer', 'user'] // Add other roles as needed
+    },
     // Withdrawal settings
     withdrawalWindow: {
         startDay: {
@@ -47,11 +30,11 @@ const commissionRateSchema = new mongoose.Schema({
             default: 30
         }
     },
-    // Last updated by
+    // Last updated by (optional)
     updatedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: false
     }
 }, {
     timestamps: true

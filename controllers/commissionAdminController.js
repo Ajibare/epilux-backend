@@ -3,11 +3,12 @@ import User from '../models/User.js';
 import CommissionTransaction from '../models/CommissionTransaction.js';
 import { ROLES } from '../middleware/auth.js';
 
-// Admin: Update default commission rate
-export const updateDefaultRate = async (req, res) => {
+// Admin: Update global commission rate
+export const updateCommissionRate = async (req, res) => {
     try {
-        const { rate } = req.body;
+        const { rate, excludedRoles } = req.body;
         
+        // Validate rate
         if (rate === undefined || rate < 0 || rate > 100) {
             return res.status(400).json({
                 success: false,
@@ -15,35 +16,77 @@ export const updateDefaultRate = async (req, res) => {
             });
         }
 
-        let rateDoc = await CommissionRate.findOne();
+        // Validate excluded roles if provided
+        if (excludedRoles && !Array.isArray(excludedRoles)) {
+            return res.status(400).json({
+                success: false,
+                message: 'excludedRoles must be an array of role names.'
+            });
+        }
+
+        // Find or create commission settings
+        let settings = await CommissionRate.findOne();
         
-        if (!rateDoc) {
-            rateDoc = new CommissionRate({
-                defaultRate: rate,
-                updatedBy: req.user.id
+        if (!settings) {
+            settings = new CommissionRate({
+                commissionRate: rate,
+                excludedRoles: excludedRoles || ['admin', 'marketer']
             });
         } else {
-            rateDoc.defaultRate = rate;
-            rateDoc.updatedBy = req.user.id;
+            settings.commissionRate = rate;
+            if (excludedRoles) {
+                settings.excludedRoles = excludedRoles;
+            }
         }
         
-        await rateDoc.save();
+        await settings.save();
         
         res.json({
             success: true,
-            message: 'Default commission rate updated successfully',
+            message: 'Commission settings updated successfully',
             data: {
-                defaultRate: rateDoc.defaultRate,
-                updatedAt: rateDoc.updatedAt,
-                updatedBy: rateDoc.updatedBy
+                commissionRate: settings.commissionRate,
+                excludedRoles: settings.excludedRoles,
+                updatedAt: settings.updatedAt
             }
         });
         
     } catch (error) {
-        console.error('Update default rate error:', error);
+        console.error('Update commission settings error:', error);
         res.status(500).json({
             success: false,
-            message: 'Error updating commission rate',
+            message: 'Error updating commission settings',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// Get current commission settings
+export const getCommissionSettings = async (req, res) => {
+    try {
+        let settings = await CommissionRate.findOne();
+        
+        // If no settings exist, return defaults
+        if (!settings) {
+            settings = new CommissionRate();
+            await settings.save();
+        }
+        
+        res.json({
+            success: true,
+            data: {
+                commissionRate: settings.commissionRate,
+                excludedRoles: settings.excludedRoles,
+                withdrawalWindow: settings.withdrawalWindow,
+                updatedAt: settings.updatedAt
+            }
+        });
+        
+    } catch (error) {
+        console.error('Get commission settings error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error retrieving commission settings',
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
