@@ -237,6 +237,95 @@ export const getDashboard = async (req, res) => {
         });
     }
 };
+/**
+ * @desc    Get all marketers and their assigned products
+ * @route   GET /api/admin/marketers
+ * @access  Private/Admin
+ */
+export const getAllMarketersWithProducts = async (req, res) => {
+    try {
+        // Get all users with role 'marketer'
+        const marketers = await User.find({ role: 'marketer' })
+            .select('name email phone status createdAt')
+            .lean();
+
+        // Get products assigned to each marketer
+        const marketersWithProducts = await Promise.all(
+            marketers.map(async (marketer) => {
+                const products = await Product.find({ assignedMarketer: marketer._id })
+                    .select('name price stock images status')
+                    .lean();
+                
+                return {
+                    ...marketer,
+                    assignedProducts: products,
+                    productCount: products.length
+                };
+            })
+        );
+
+        res.status(200).json({
+            success: true,
+            count: marketersWithProducts.length,
+            data: marketersWithProducts
+        });
+
+    } catch (error) {
+        console.error('Get all marketers error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
+// In marketerController.js
+export const assignProductToMarketer = async (req, res) => {
+    try {
+        const { productId, marketerId } = req.body;
+
+        // Verify marketer exists and is a marketer
+        const marketer = await User.findOne({ 
+            _id: marketerId, 
+            role: 'marketer' 
+        });
+
+        if (!marketer) {
+            return res.status(404).json({
+                success: false,
+                message: 'Marketer not found'
+            });
+        }
+
+        // Assign product to marketer
+        const product = await Product.findByIdAndUpdate(
+            productId,
+            { assignedMarketer: marketerId },
+            { new: true, runValidators: true }
+        );
+
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Product assigned to marketer successfully',
+            data: product
+        });
+
+    } catch (error) {
+        console.error('Assign product error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
 
 export default {
     getDashboard,

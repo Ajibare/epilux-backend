@@ -1,8 +1,13 @@
 import express from 'express';
 import { authenticate as protect, authorize } from '../middleware/auth.js';
 import * as marketerController from '../controllers/marketerController.js';
+import { getAllMarketersWithProducts } from '../controllers/marketerController.js';
+import { assignProductToMarketer } from '../controllers/marketerController.js';
 
 const router = express.Router();
+
+// In routes/marketer.js
+router.post('/admin/assign-product', protect, authorize('admin'), assignProductToMarketer);
 
 // @desc    Get marketer dashboard with order statistics
 // @route   GET /api/marketer/dashboard
@@ -50,5 +55,15 @@ router.get('/orders/:id', protect, async (req, res) => {
         });
     }
 });
+
+
+
+
+
+
+
+
+// Add this route (before the export statement)
+router.get('/admin/marketers', protect, authorize('admin'), getAllMarketersWithProducts);
 
 export default router;

@@ -15,6 +15,7 @@ import marketerRoutes from './routes/marketer.js';
 import withdrawalRoutes from './routes/withdrawals.js';
 import uploadRoutes from './routes/uploads.js';
 import setupScheduledTasks from './services/scheduler.js'
+// import commissionRoutes from './routes/commission.js';
 
 const app = express();
 const PORT = config.PORT;

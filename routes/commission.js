@@ -1,8 +1,12 @@
 import express from 'express';
 import { check } from 'express-validator';
-import * as commissionController from '../controllers/commissionController.js';
+// import * as commissionController from '../controllers/commissionController.js';
+import { authenticate as verifyToken, authorize } from '../middleware/auth.js';
 import { authenticate as auth } from '../middleware/auth.js';
 import { admin } from '../middleware/auth.js';
+// import { addCommission } from '../controllers/commissionController.js';
+import commissionController from '../controllers/commissionController.js';
+
 
 const router = express.Router();
 
@@ -48,5 +52,15 @@ router.put(
   ],
   (req, res) => commissionController.updateCommissionStatus(req, res)
 );
+
+
+// Protected admin routes
+router.use(verifyToken);
+router.use(authorize('admin'));
+
+// Add commission to user
+// router.post('/', addCommission);
+router.post('/', commissionController.addCommission);
+
 
 export default router;

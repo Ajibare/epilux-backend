@@ -106,6 +106,11 @@ const productSchema = new Schema({
     updatedAt: {
         type: Date,
         default: Date.now
+    },
+    assignedMarketer: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        index: true
     }
 });
 

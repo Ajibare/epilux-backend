@@ -1,6 +1,7 @@
 import CommissionService from '../services/commissionService.js';
 import { validationResult } from 'express-validator';
 import CommissionTransaction from '../models/CommissionTransaction.js';
+import { NotFoundError } from '../middleware/errorHandler.js';
 
 const commissionController = {
   /**
@@ -174,7 +175,85 @@ const commissionController = {
         error: error.message
       });
     }
-  }
+  },
+
+  // controllers/commissionController.js
+// import User from '../models/User.js';
+// import Commission from '../models/Commission.js'; // You'll need to create this model
+// import { NotFoundError } from '../middleware/errorHandler.js';
+
+/**
+ * @desc    Add commission to a user
+ * @route   POST /api/commission
+ * @access  Private/Admin
+ * @body    {string} userId - ID of the user to add commission to
+ * @body    {number} amount - Commission amount
+ * @body    {string} [description] - Description of the commission
+ * @body    {string} [reference] - Reference ID for the commission
+ * @body    {string} [type=referral] - Type of commission (referral, sale, bonus, etc.)
+ */
+  addCommission: async (req, res) => {
+    try {
+        const { userId, amount, description = '', reference = '', type = 'referral' } = req.body;
+
+        // Validate input
+        if (!userId || amount === undefined || isNaN(amount) || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Valid userId and positive amount are required'
+            });
+        }
+
+        // Check if user exists
+        const user = await User.findById(userId);
+        if (!user) {
+            throw new NotFoundError('User not found');
+        }
+
+        // Create commission record
+        const commission = new Commission({
+            user: userId,
+            amount: parseFloat(amount),
+            type,
+            description,
+            reference,
+            status: 'pending', // or 'approved' based on your business logic
+            approvedBy: req.user.id
+        });
+
+        await commission.save();
+
+        // Update user's commission balance
+        user.commissionBalance.available = (user.commissionBalance.available || 0) + parseFloat(amount);
+        user.commissionBalance.lifetime = (user.commissionBalance.lifetime || 0) + parseFloat(amount);
+        
+        // Update stats if needed
+        if (type === 'referral') {
+            user.stats.totalCommissionEarned = (user.stats.totalCommissionEarned || 0) + parseFloat(amount);
+        }
+
+        await user.save();
+
+        res.status(201).json({
+            success: true,
+            message: 'Commission added successfully',
+            data: commission
+        });
+
+    } catch (error) {
+        console.error('Add commission error:', error);
+        res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.message || 'Error adding commission'
+        });
+    }
+ }
 };
 
+
+
+
+
+
 export default commissionController;
+

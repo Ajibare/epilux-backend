@@ -5,12 +5,6 @@ import { v4 as uuidv4 } from 'uuid';
 // Get wallet balance
 export const getWalletBalance = async (req, res) => {
     try {
-        if (!req.user || !req.user.id) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required'
-            });
-        }
 
         const wallet = await Wallet.findOne({ userId: req.user.id });
         
@@ -67,13 +61,6 @@ export const getWalletTransactions = async (req, res) => {
     try {
         const { page = 1, limit = 10, type } = req.query;
         const skip = (page - 1) * limit;
-        
-        if (!req.user || !req.user.id) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required'
-            });
-        }
         
         const query = { userId: req.user.id };
         if (type) {
