@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import Product from '../models/Product.js';
 import Order from '../models/Order.js';
 import AffiliateCommission from '../models/AffiliateCommission.js';
+import CommissionRate from '../models/CommissionRate.js';
 import AffiliateWithdrawal from '../models/AffiliateWithdrawal.js';
 import SeasonalPromoService from '../services/seasonalPromoService.js';
 
@@ -1180,8 +1181,87 @@ export const updateUserRole = async (req, res) => {
     }
 };
 
-// Export all controller functions
-// Export all controller functions
+// Commission Rate Management
+const getCommissionRates = async (req, res) => {
+  try {
+    const rates = await CommissionRate.findOne({}).populate('userRates.user', 'name email');
+    res.json({
+      success: true,
+      data: rates || { defaultRate: 10, userRates: [] }
+    });
+  } catch (error) {
+    console.error('Error fetching commission rates:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching commission rates'
+    });
+  }
+};
+
+const createUpdateCommissionRate = async (req, res) => {
+  try {
+    const { name, description, rate, type, category, userId } = req.body;
+    
+    if (!name || rate === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name and rate are required'
+      });
+    }
+
+    // For global rate
+    if (!userId) {
+      const updated = await CommissionRate.findOneAndUpdate(
+        {},
+        { defaultRate: rate },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+      
+      return res.json({
+        success: true,
+        data: updated
+      });
+    }
+
+    // For user-specific rate
+    const rateData = await CommissionRate.findOne({}) || new CommissionRate({ defaultRate: 10 });
+    
+    const userRateIndex = rateData.userRates.findIndex(r => r.user.toString() === userId);
+    
+    if (userRateIndex >= 0) {
+      // Update existing user rate
+      rateData.userRates[userRateIndex] = {
+        ...rateData.userRates[userRateIndex].toObject(),
+        rate,
+        updatedAt: new Date(),
+        updatedBy: req.user.id
+      };
+    } else {
+      // Add new user rate
+      rateData.userRates.push({
+        user: userId,
+        rate,
+        updatedBy: req.user.id
+      });
+    }
+
+    const updated = await rateData.save();
+    
+    res.json({
+      success: true,
+      data: updated
+    });
+  } catch (error) {
+    console.error('Error updating commission rate:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating commission rate'
+    });
+  }
+}
+
+
+
 export {
     // Seasonal Promotions
     createUpdateSeasonalPromo,
@@ -1206,5 +1286,9 @@ export {
     getWithdrawals,
     updateWithdrawalStatus,
     getSettings,
-    updateSettings
+    updateSettings,
+    
+    // Commission Rates
+    getCommissionRates,
+    createUpdateCommissionRate
 };
