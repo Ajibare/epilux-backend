@@ -1224,12 +1224,20 @@ const createUpdateCommissionRate = async (req, res) => {
     }
 
     // For user-specific rate
-    const rateData = await CommissionRate.findOne({}) || new CommissionRate({ 
-      defaultRate: 10,
-      userRates: []
-    });
+    let rateData = await CommissionRate.findOne({});
     
-    const userRateIndex = rateData.userRates.findIndex(r => r.user.toString() === userId);
+    if (!rateData) {
+      rateData = new CommissionRate({
+        defaultRate: 10,
+        userRates: []
+      });
+    } else if (!Array.isArray(rateData.userRates)) {
+      rateData.userRates = [];
+    }
+    
+    const userRateIndex = rateData.userRates.findIndex(r => 
+      r && r.user && r.user.toString() === userId
+    );
     
     if (userRateIndex >= 0) {
       // Update existing user rate
