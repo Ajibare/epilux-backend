@@ -1200,63 +1200,38 @@ const getCommissionRates = async (req, res) => {
 
 const createUpdateCommissionRate = async (req, res) => {
   try {
-    const { name, description, rate, type, category, userId } = req.body;
+    const { rate, excludedRoles, startDay, endDay } = req.body;
     
-    if (!name || rate === undefined) {
+    if (rate === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Name and rate are required'
+        message: 'Commission rate is required'
       });
     }
 
-    // For global rate
-    if (!userId) {
-      const updated = await CommissionRate.findOneAndUpdate(
-        {},
-        { defaultRate: rate },
-        { new: true, upsert: true, setDefaultsOnInsert: true }
-      );
-      
-      return res.json({
-        success: true,
-        data: updated
-      });
+    // Update or create commission rate document
+    const updateData = {
+      commissionRate: rate,
+      updatedBy: req.user.id
+    };
+
+    // Add optional fields if provided
+    if (excludedRoles && Array.isArray(excludedRoles)) {
+      updateData.excludedRoles = excludedRoles;
     }
 
-    // For user-specific rate
-    let rateData = await CommissionRate.findOne({});
-    
-    if (!rateData) {
-      rateData = new CommissionRate({
-        defaultRate: 10,
-        userRates: []
-      });
-    } else if (!Array.isArray(rateData.userRates)) {
-      rateData.userRates = [];
-    }
-    
-    const userRateIndex = rateData.userRates.findIndex(r => 
-      r && r.user && r.user.toString() === userId
-    );
-    
-    if (userRateIndex >= 0) {
-      // Update existing user rate
-      rateData.userRates[userRateIndex] = {
-        ...rateData.userRates[userRateIndex].toObject(),
-        rate,
-        updatedAt: new Date(),
-        updatedBy: req.user.id
+    if (startDay !== undefined || endDay !== undefined) {
+      updateData.withdrawalWindow = {
+        startDay: startDay !== undefined ? startDay : 26, // Default start day
+        endDay: endDay !== undefined ? endDay : 30       // Default end day
       };
-    } else {
-      // Add new user rate
-      rateData.userRates.push({
-        user: userId,
-        rate,
-        updatedBy: req.user.id
-      });
     }
 
-    const updated = await rateData.save();
+    const updated = await CommissionRate.findOneAndUpdate(
+      {},
+      updateData,
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
     
     res.json({
       success: true,
@@ -1266,7 +1241,8 @@ const createUpdateCommissionRate = async (req, res) => {
     console.error('Error updating commission rate:', error);
     res.status(500).json({
       success: false,
-      message: 'Error updating commission rate'
+      message: 'Error updating commission rate',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 }
