@@ -1224,7 +1224,10 @@ const createUpdateCommissionRate = async (req, res) => {
     }
 
     // For user-specific rate
-    const rateData = await CommissionRate.findOne({}) || new CommissionRate({ defaultRate: 10 });
+    const rateData = await CommissionRate.findOne({}) || new CommissionRate({ 
+      defaultRate: 10,
+      userRates: []
+    });
     
     const userRateIndex = rateData.userRates.findIndex(r => r.user.toString() === userId);
     
