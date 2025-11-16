@@ -30,6 +30,17 @@ export const getCart = async (req, res, next) => {
             sku: product.sku,
             images: product.images || []
           };
+          
+          // Ensure cart item has image data
+          if (!item.image && product.images && product.images.length > 0) {
+            const primaryImage = product.images.find(img => img.isPrimary) || product.images[0];
+            item.image = primaryImage?.url || '';
+            item.images = product.images.map(img => ({
+              url: img.url,
+              isPrimary: img.isPrimary || false,
+              altText: img.altText || product.name
+            }));
+          }
         }
       }
     }
@@ -134,7 +145,9 @@ export const addToCart = async (req, res, next) => {
         altText: img.altText || product.name
       }));
     } else {
-      return next(new AppError('Product must have at least one image', 400));
+      console.log('Product has no images, proceeding without image');
+      primaryImage = '';
+      productImages = [];
     }
 
     // Check if product already in cart

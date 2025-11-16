@@ -2,6 +2,8 @@ import express from 'express';
 import { 
     updateCommissionRate,
     getCommissionSettings,
+    getAllCommissions,
+    updateCommissionStatus,
     requestWithdrawal, 
     processWithdrawal, 
     getWithdrawalHistory 
@@ -18,6 +20,13 @@ const router = express.Router();
 router.route('/settings')
     .get(protect, authorize(ROLES.ADMIN), (req, res) => getCommissionSettings(req, res))
     .put(protect, authorize(ROLES.ADMIN), (req, res) => updateCommissionRate(req, res));
+
+// Commission records management routes
+router.route('/commissions')
+    .get(protect, authorize(ROLES.ADMIN), (req, res) => getAllCommissions(req, res));
+
+router.route('/commissions/:id/status')
+    .put(protect, authorize(ROLES.ADMIN), (req, res) => updateCommissionStatus(req, res));
 
 // Withdrawal routes
 router.route('/withdraw')

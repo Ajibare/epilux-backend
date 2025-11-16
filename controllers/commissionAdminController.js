@@ -1,6 +1,7 @@
 import CommissionRate from '../models/CommissionRate.js';
 import User from '../models/User.js';
 import CommissionTransaction from '../models/CommissionTransaction.js';
+import Commission from '../models/Commission.js';
 import { ROLES } from '../middleware/auth.js';
 
 // Admin: Update global commission rate
@@ -64,15 +65,31 @@ export const updateCommissionRate = async (req, res) => {
 // Get current commission settings
 export const getCommissionSettings = async (req, res) => {
     try {
+        console.log('=== GET COMMISSION SETTINGS REQUEST ===');
+        console.log('User ID:', req.user?.id);
+        console.log('User Role:', req.user?.role);
+
         let settings = await CommissionRate.findOne();
+        
+        console.log('Commission settings found:', !!settings);
+        if (settings) {
+            console.log('Current settings:', {
+                commissionRate: settings.commissionRate,
+                excludedRoles: settings.excludedRoles,
+                withdrawalWindow: settings.withdrawalWindow,
+                updatedAt: settings.updatedAt
+            });
+        }
         
         // If no settings exist, return defaults
         if (!settings) {
+            console.log('No settings found, creating defaults');
             settings = new CommissionRate();
             await settings.save();
+            console.log('Default settings created');
         }
         
-        res.json({
+        const response = {
             success: true,
             data: {
                 commissionRate: settings.commissionRate,
@@ -80,13 +97,232 @@ export const getCommissionSettings = async (req, res) => {
                 withdrawalWindow: settings.withdrawalWindow,
                 updatedAt: settings.updatedAt
             }
-        });
+        };
+
+        console.log('Response:', response);
+        console.log('=== END GET COMMISSION SETTINGS ===');
+        
+        res.json(response);
         
     } catch (error) {
         console.error('Get commission settings error:', error);
         res.status(500).json({
             success: false,
             message: 'Error retrieving commission settings',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// Admin: Get all commission records
+export const getAllCommissions = async (req, res) => {
+    try {
+        const { 
+            page = 1, 
+            limit = 10, 
+            status, 
+            type, 
+            userId,
+            startDate, 
+            endDate,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        // Log incoming request parameters
+        console.log('=== GET ALL COMMISSIONS REQUEST ===');
+        console.log('User ID:', req.user?.id);
+        console.log('User Role:', req.user?.role);
+        console.log('Query Parameters:', req.query);
+        console.log('Filters:', { status, type, userId, startDate, endDate });
+        console.log('Pagination:', { page, limit, sortBy, sortOrder });
+
+        // Build query
+        const query = {};
+        
+        if (status) {
+            query.status = status;
+        }
+        
+        if (type) {
+            query.type = type;
+        }
+        
+        if (userId) {
+            query.user = userId;
+        }
+        
+        // Date range filter
+        if (startDate || endDate) {
+            query.createdAt = {};
+            if (startDate) query.createdAt.$gte = new Date(startDate);
+            if (endDate) query.createdAt.$lte = new Date(endDate);
+        }
+
+        console.log('MongoDB Query:', JSON.stringify(query, null, 2));
+
+        // Sort options
+        const sort = {};
+        sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // Execute query with pagination
+        const [commissions, total] = await Promise.all([
+            Commission.find(query)
+                .populate('user', 'name email')
+                .populate('approvedBy', 'name email')
+                .sort(sort)
+                .limit(limit * 1)
+                .skip((page - 1) * limit)
+                .lean(),
+            Commission.countDocuments(query)
+        ]);
+
+        console.log('Query Results:');
+        console.log('- Total commissions found:', total);
+        console.log('- Commissions returned:', commissions.length);
+        console.log('- Sample commission data:', commissions[0] || 'No commissions found');
+
+        // Calculate summary statistics
+        const stats = await Commission.aggregate([
+            { $match: query },
+            {
+                $group: {
+                    _id: null,
+                    totalAmount: { $sum: '$amount' },
+                    pendingAmount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'pending'] }, '$amount', 0] }
+                    },
+                    approvedAmount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'approved'] }, '$amount', 0] }
+                    },
+                    rejectedAmount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'reversed'] }, '$amount', 0] }
+                    },
+                    totalCount: { $sum: 1 },
+                    pendingCount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+                    },
+                    approvedCount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
+                    }
+                }
+            }
+        ]);
+
+        const summary = stats[0] || {
+            totalAmount: 0,
+            pendingAmount: 0,
+            approvedAmount: 0,
+            rejectedAmount: 0,
+            totalCount: 0,
+            pendingCount: 0,
+            approvedCount: 0
+        };
+
+        console.log('Summary Statistics:', summary);
+
+        const response = {
+            success: true,
+            data: commissions,
+            summary,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: parseInt(page),
+                limit: parseInt(limit)
+            }
+        };
+
+        console.log('Response Data Size:', JSON.stringify(response).length, 'characters');
+        console.log('=== END GET ALL COMMISSIONS ===');
+
+        res.json(response);
+
+    } catch (error) {
+        console.error('Get all commissions error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error retrieving commission records',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// Admin: Update commission status
+export const updateCommissionStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, rejectionReason } = req.body;
+
+        console.log('=== UPDATE COMMISSION STATUS REQUEST ===');
+        console.log('User ID:', req.user?.id);
+        console.log('User Role:', req.user?.role);
+        console.log('Commission ID:', id);
+        console.log('Request Body:', req.body);
+        console.log('New Status:', status);
+        console.log('Rejection Reason:', rejectionReason);
+
+        if (!['pending', 'approved', 'reversed'].includes(status)) {
+            console.log('Invalid status provided:', status);
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid status. Must be one of: pending, approved, reversed'
+            });
+        }
+
+        const commission = await Commission.findById(id).populate('user');
+        
+        console.log('Commission found:', !!commission);
+        if (commission) {
+            console.log('Current commission data:', {
+                id: commission._id,
+                user: commission.user?.name || commission.user,
+                amount: commission.amount,
+                currentStatus: commission.status,
+                type: commission.type
+            });
+        }
+        
+        if (!commission) {
+            console.log('Commission not found with ID:', id);
+            return res.status(404).json({
+                success: false,
+                message: 'Commission record not found'
+            });
+        }
+
+        // Update commission
+        const oldStatus = commission.status;
+        commission.status = status;
+        commission.approvedBy = req.user.id;
+        
+        if (status === 'reversed' && rejectionReason) {
+            commission.description = rejectionReason;
+        }
+
+        await commission.save();
+
+        console.log('Commission updated successfully:');
+        console.log('- Old Status:', oldStatus);
+        console.log('- New Status:', status);
+        console.log('- Approved By:', req.user.id);
+
+        const response = {
+            success: true,
+            message: `Commission ${status} successfully`,
+            data: commission
+        };
+
+        console.log('Response:', response);
+        console.log('=== END UPDATE COMMISSION STATUS ===');
+
+        res.json(response);
+
+    } catch (error) {
+        console.error('Update commission status error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error updating commission status',
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
@@ -375,4 +611,15 @@ export const getWithdrawalHistory = async (req, res) => {
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
+};
+
+export default {
+    updateCommissionRate,
+    getCommissionSettings,
+    getAllCommissions,
+    updateCommissionStatus,
+    setUserRate,
+    requestWithdrawal,
+    processWithdrawal,
+    getWithdrawalHistory
 };
