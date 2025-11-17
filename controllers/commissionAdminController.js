@@ -2,6 +2,7 @@ import CommissionRate from '../models/CommissionRate.js';
 import User from '../models/User.js';
 import CommissionTransaction from '../models/CommissionTransaction.js';
 import Commission from '../models/Commission.js';
+import AffiliateCommission from '../models/AffiliateCommission.js';
 import { ROLES } from '../middleware/auth.js';
 
 // Admin: Update global commission rate
@@ -145,11 +146,16 @@ export const getAllCommissions = async (req, res) => {
         }
         
         if (type) {
-            query.type = type;
+            // For AffiliateCommission, type might not exist, so we'll skip or map it
+            // query.type = type;
         }
         
         if (userId) {
-            query.user = userId;
+            // For AffiliateCommission, userId could refer to affiliate or referredUser
+            query.$or = [
+                { affiliate: userId },
+                { referredUser: userId }
+            ];
         }
         
         // Date range filter
@@ -161,20 +167,35 @@ export const getAllCommissions = async (req, res) => {
 
         console.log('MongoDB Query:', JSON.stringify(query, null, 2));
 
+        // Debug: Check if Commission model exists and has any data
+        try {
+            const allCommissions = await AffiliateCommission.find({});
+            console.log('DEBUG: All affiliate commissions in database:', allCommissions.length);
+            console.log('DEBUG: Sample commission structure:', allCommissions[0] || 'No commissions at all');
+            
+            // Check collections
+            const collections = await AffiliateCommission.db.db.listCollections().toArray();
+            console.log('DEBUG: Available collections:', collections.map(c => c.name));
+            
+        } catch (dbError) {
+            console.error('DEBUG: Error checking database:', dbError);
+        }
+
         // Sort options
         const sort = {};
         sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
         // Execute query with pagination
         const [commissions, total] = await Promise.all([
-            Commission.find(query)
-                .populate('user', 'name email')
-                .populate('approvedBy', 'name email')
+            AffiliateCommission.find(query)
+                .populate('affiliate', 'name email')
+                .populate('referredUser', 'name email')
+                .populate('order', 'orderNumber totalAmount status')
                 .sort(sort)
                 .limit(limit * 1)
                 .skip((page - 1) * limit)
                 .lean(),
-            Commission.countDocuments(query)
+            AffiliateCommission.countDocuments(query)
         ]);
 
         console.log('Query Results:');
@@ -183,7 +204,7 @@ export const getAllCommissions = async (req, res) => {
         console.log('- Sample commission data:', commissions[0] || 'No commissions found');
 
         // Calculate summary statistics
-        const stats = await Commission.aggregate([
+        const stats = await AffiliateCommission.aggregate([
             { $match: query },
             {
                 $group: {
@@ -195,8 +216,11 @@ export const getAllCommissions = async (req, res) => {
                     approvedAmount: {
                         $sum: { $cond: [{ $eq: ['$status', 'approved'] }, '$amount', 0] }
                     },
-                    rejectedAmount: {
-                        $sum: { $cond: [{ $eq: ['$status', 'reversed'] }, '$amount', 0] }
+                    paidAmount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'paid'] }, '$amount', 0] }
+                    },
+                    cancelledAmount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, '$amount', 0] }
                     },
                     totalCount: { $sum: 1 },
                     pendingCount: {
@@ -204,6 +228,9 @@ export const getAllCommissions = async (req, res) => {
                     },
                     approvedCount: {
                         $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
+                    },
+                    paidCount: {
+                        $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] }
                     }
                 }
             }
@@ -213,10 +240,12 @@ export const getAllCommissions = async (req, res) => {
             totalAmount: 0,
             pendingAmount: 0,
             approvedAmount: 0,
-            rejectedAmount: 0,
+            paidAmount: 0,
+            cancelledAmount: 0,
             totalCount: 0,
             pendingCount: 0,
-            approvedCount: 0
+            approvedCount: 0,
+            paidCount: 0
         };
 
         console.log('Summary Statistics:', summary);
@@ -262,24 +291,26 @@ export const updateCommissionStatus = async (req, res) => {
         console.log('New Status:', status);
         console.log('Rejection Reason:', rejectionReason);
 
-        if (!['pending', 'approved', 'reversed'].includes(status)) {
+        if (!['pending', 'approved', 'paid', 'cancelled'].includes(status)) {
             console.log('Invalid status provided:', status);
             return res.status(400).json({
                 success: false,
-                message: 'Invalid status. Must be one of: pending, approved, reversed'
+                message: 'Invalid status. Must be one of: pending, approved, paid, cancelled'
             });
         }
 
-        const commission = await Commission.findById(id).populate('user');
+        const commission = await AffiliateCommission.findById(id).populate('affiliate').populate('referredUser').populate('order');
         
         console.log('Commission found:', !!commission);
         if (commission) {
             console.log('Current commission data:', {
                 id: commission._id,
-                user: commission.user?.name || commission.user,
+                affiliate: commission.affiliate?.name || commission.affiliate,
+                referredUser: commission.referredUser?.name || commission.referredUser,
                 amount: commission.amount,
                 currentStatus: commission.status,
-                type: commission.type
+                commissionRate: commission.commissionRate,
+                order: commission.order?.orderNumber || commission.order
             });
         }
         
@@ -294,10 +325,17 @@ export const updateCommissionStatus = async (req, res) => {
         // Update commission
         const oldStatus = commission.status;
         commission.status = status;
-        commission.approvedBy = req.user.id;
         
-        if (status === 'reversed' && rejectionReason) {
-            commission.description = rejectionReason;
+        // Set paid date if status is being changed to paid
+        if (status === 'paid') {
+            commission.paidAt = new Date();
+            if (req.body.paymentMethod) {
+                commission.paymentMethod = req.body.paymentMethod;
+            }
+        }
+        
+        if (status === 'cancelled' && rejectionReason) {
+            commission.notes = rejectionReason;
         }
 
         await commission.save();
@@ -305,7 +343,8 @@ export const updateCommissionStatus = async (req, res) => {
         console.log('Commission updated successfully:');
         console.log('- Old Status:', oldStatus);
         console.log('- New Status:', status);
-        console.log('- Approved By:', req.user.id);
+        console.log('- Paid At:', commission.paidAt);
+        console.log('- Payment Method:', commission.paymentMethod);
 
         const response = {
             success: true,
