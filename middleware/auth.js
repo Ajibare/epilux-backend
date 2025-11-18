@@ -44,12 +44,51 @@ const authenticate = async (req, res, next) => {
                 message: 'Access denied. No token provided.'                                                              });
         }
 
-        const decoded = verifyToken(token);
-        console.log('Auth middleware - Decoded token:', decoded);                                             
-        console.log('Auth middleware - Looking for user with ID:', decoded.userId);                                             
+        let decoded;
+        try {
+            decoded = verifyToken(token);
+            console.log('Auth middleware - Decoded token:', decoded);                                             
+            console.log('Auth middleware - Token structure:', {
+                hasUserId: !!decoded.userId,
+                hasId: !!decoded.id,
+                hasSub: !!decoded.sub,
+                keys: Object.keys(decoded)
+            });
+            
+            // Support different field names for user ID
+            const userId = decoded.userId || decoded.id || decoded.sub;
+            console.log('Auth middleware - Looking for user with ID:', userId);                                             
+        } catch (tokenError) {
+            console.log('Auth middleware - Token verification failed:', tokenError.message);
+            if (tokenError.name === 'JsonWebTokenError') {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Invalid token.'
+                });
+            }
+            if (tokenError.name === 'TokenExpiredError') {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Token expired.'
+                });
+            }
+            return res.status(401).json({
+                success: false,
+                message: 'Token verification failed.'
+            });
+        }                                             
         
-        const user = await User.findById(decoded.userId).select('-password');                                        
+        const userId = decoded.userId || decoded.id || decoded.sub;
+        const user = await User.findById(userId).select('-password');                                        
         console.log('Auth middleware - Found user:', user ? { id: user._id, email: user.email, role: user.role } : 'not found');                        
+        
+        // Test: Try to find any user to verify User model works
+        try {
+            const anyUser = await User.findOne().select('-password');
+            console.log('Auth middleware - Test: Found any user:', anyUser ? { id: anyUser._id, email: anyUser.email } : 'no users found');
+        } catch (dbError) {
+            console.log('Auth middleware - Test: Database error:', dbError.message);
+        }                        
         
         if (!user) {
             console.log('Auth middleware - User not found in database');
