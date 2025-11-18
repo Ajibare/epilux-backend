@@ -91,12 +91,24 @@ export const getCart = async (req, res, next) => {
  */
 export const addToCart = async (req, res, next) => {   
   try {
+    console.log('=== ADD TO CART DEBUG ===');
     console.log('Add to cart request body:', req.body);
-    console.log('Authenticated user:', req.user ? { id: req.user._id, email: req.user.email } : 'NOT AUTHENTICATED');
+    console.log('Headers:', {
+      authorization: req.headers.authorization ? 'Present' : 'Missing',
+      contentType: req.headers.contentType
+    });
+    console.log('Authenticated user:', req.user ? { 
+      id: req.user._id, 
+      email: req.user.email,
+      hasId: !!req.user._id,
+      idType: typeof req.user._id
+    } : 'NOT AUTHENTICATED');
     
     // Check if user is authenticated
     if (!req.user || !req.user._id) {
       console.log('Authentication failed - no user or user ID');
+      console.log('req.user exists:', !!req.user);
+      console.log('req.user._id exists:', !!req.user?._id);
       return next(new AppError('User authentication required', 401));
     }
     
@@ -138,12 +150,20 @@ export const addToCart = async (req, res, next) => {
     }
 
     // Find user's cart or create new one if it doesn't exist
+    console.log('Looking for cart with user ID:', req.user._id);
     let cart = await Cart.findOne({ user: req.user._id });
+    console.log('Found existing cart:', cart ? `ID: ${cart._id}` : 'No');
 
     if (!cart) {
+      console.log('Creating new cart with user ID:', req.user._id);
       cart = new Cart({
         user: req.user._id,
         items: []
+      });
+      console.log('New cart created:', {
+        id: cart._id,
+        user: cart.user,
+        userExists: !!cart.user
       });
     }
 

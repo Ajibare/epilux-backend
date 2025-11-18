@@ -59,7 +59,13 @@ const authenticate = async (req, res, next) => {
         }
 
         console.log('Auth middleware - Authentication successful, setting req.user');
+        console.log('Auth middleware - User object being set:', {
+            _id: user._id,
+            email: user.email,
+            role: user.role
+        });
         req.user = user;
+        console.log('Auth middleware - req.user after setting:', req.user ? { _id: req.user._id, email: req.user.email } : 'NULL');
         next();
     } catch (error) {
         console.log('Auth middleware - Error:', error.message);                                                      
