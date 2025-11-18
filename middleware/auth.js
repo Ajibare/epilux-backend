@@ -29,52 +29,55 @@ const verifyToken = (token) => {
 };
 
 // Authentication middleware
-const authenticate = async (req, res, next) => {
+const authenticate = async (req, res, next) => {       
     try {
-        const token = req.header('Authorization')?.replace('Bearer ', '');
-        
-        console.log('Auth middleware - Token received:', token ? token.substring(0, 20) + '...' : 'undefined');
-        console.log('Auth middleware - JWT_SECRET length:', JWT_SECRET ? JWT_SECRET.length : 'undefined');
+        const authHeader = req.header('Authorization');
+        const token = authHeader?.replace('Bearer ', '');                                    
+        console.log('Auth middleware - Full Authorization header:', authHeader ? authHeader.substring(0, 50) + '...' : 'undefined');
+        console.log('Auth middleware - Token received:', token ? token.substring(0, 20) + '...' : 'undefined');                                                             
+        console.log('Auth middleware - JWT_SECRET length:', JWT_SECRET ? JWT_SECRET.length : 'undefined');    
         
         if (!token) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Access denied. No token provided.' 
-            });
+            console.log('Auth middleware - No token provided');
+            return res.status(401).json({
+                success: false,
+                message: 'Access denied. No token provided.'                                                              });
         }
 
         const decoded = verifyToken(token);
-        console.log('Auth middleware - Decoded token:', decoded);
+        console.log('Auth middleware - Decoded token:', decoded);                                             
+        console.log('Auth middleware - Looking for user with ID:', decoded.userId);                                             
         
-        const user = await User.findById(decoded.userId).select('-password');
-        console.log('Auth middleware - Found user:', user ? user.email : 'not found');
-
+        const user = await User.findById(decoded.userId).select('-password');                                        
+        console.log('Auth middleware - Found user:', user ? { id: user._id, email: user.email, role: user.role } : 'not found');                        
+        
         if (!user) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Invalid token. User not found.' 
-            });
+            console.log('Auth middleware - User not found in database');
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid token. User not found.'                                                                 });
         }
 
+        console.log('Auth middleware - Authentication successful, setting req.user');
         req.user = user;
         next();
     } catch (error) {
-        console.log('Auth middleware - Error:', error.message);
-        if (error.name === 'JsonWebTokenError') {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Invalid token.' 
+        console.log('Auth middleware - Error:', error.message);                                                      
+        if (error.name === 'JsonWebTokenError') {      
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid token.'
             });
         }
-        if (error.name === 'TokenExpiredError') {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Token expired.' 
+        if (error.name === 'TokenExpiredError') {      
+            return res.status(401).json({
+                success: false,
+                message: 'Token expired.'
             });
         }
-        return res.status(500).json({ 
-            success: false, 
-            message: 'Internal server error.' 
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error.'
         });
     }
 };

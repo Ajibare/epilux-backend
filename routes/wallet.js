@@ -1,5 +1,5 @@
 import express from 'express';
-import { verifyToken, admin } from '../middleware/auth.js';
+import { authenticate, admin } from '../middleware/auth.js';
 import { 
     getWalletBalance, 
     getWalletTransactions, 
@@ -10,7 +10,7 @@ import {
 const router = express.Router();
 
 // Protected routes (require authentication)
-router.use(verifyToken);
+router.use(authenticate);
 
 // Get wallet balance
 router.get('/balance', getWalletBalance);

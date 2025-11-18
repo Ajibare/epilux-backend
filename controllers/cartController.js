@@ -76,9 +76,17 @@ export const getCart = async (req, res, next) => {
  * @route   POST /api/cart/items
  * @access  Private
  */
-export const addToCart = async (req, res, next) => {
+export const addToCart = async (req, res, next) => {   
   try {
     console.log('Add to cart request body:', req.body);
+    console.log('Authenticated user:', req.user ? { id: req.user._id, email: req.user.email } : 'NOT AUTHENTICATED');
+    
+    // Check if user is authenticated
+    if (!req.user || !req.user._id) {
+      console.log('Authentication failed - no user or user ID');
+      return next(new AppError('User authentication required', 401));
+    }
+    
     const { productId, quantity = 1 } = req.body;
 
     // Validate input
