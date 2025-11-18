@@ -18,9 +18,13 @@ export const getCart = async (req, res, next) => {
     
     // If cart exists, populate product details
     if (cart) {
+      console.log('Cart found, processing items:', cart.items.length);
+      
       // Get fresh product data to ensure we have the latest info
-      for (const item of cart.items) {
+      for (let i = 0; i < cart.items.length; i++) {
+        const item = cart.items[i];
         const product = await Product.findById(item.product);
+        
         if (product) {
           // Update item with latest product data
           item.productDetails = {
@@ -31,15 +35,24 @@ export const getCart = async (req, res, next) => {
             images: product.images || []
           };
           
-          // Ensure cart item has image data
+          // Ensure cart item has proper image data
           if (!item.image && product.images && product.images.length > 0) {
-            const primaryImage = product.images.find(img => img.isPrimary) || product.images[0];
-            item.image = primaryImage?.url || '';
+            const primaryImg = product.images.find(img => img.isPrimary) || product.images[0];
+            item.image = primaryImg?.url || '';
+            
+            // Also update the images array
             item.images = product.images.map(img => ({
               url: img.url,
               isPrimary: img.isPrimary || false,
               altText: img.altText || product.name
             }));
+            
+            console.log('Updated cart item image:', {
+              productId: product._id,
+              productName: product.name,
+              primaryImage: item.image,
+              imageCount: item.images?.length || 0
+            });
           }
         }
       }
@@ -134,26 +147,28 @@ export const addToCart = async (req, res, next) => {
       });
     }
 
-    // Process product images
+    // Process product images - simplified approach
     let primaryImage = '';
     let productImages = [];
     
     if (product.images && product.images.length > 0) {
-      // Sort images to get primary image first
-      const sortedImages = [...product.images].sort((a, b) => {
-        if (a.isPrimary) return -1;
-        if (b.isPrimary) return 1;
-        return 0;
-      });
+      // Find primary image or use first one
+      const primaryImg = product.images.find(img => img.isPrimary) || product.images[0];
+      primaryImage = primaryImg?.url || '';
       
-      primaryImage = sortedImages[0]?.url || '';
-      productImages = sortedImages.map(img => ({
+      // Create simplified image array
+      productImages = product.images.map(img => ({
         url: img.url,
         isPrimary: img.isPrimary || false,
         altText: img.altText || product.name
       }));
+      
+      console.log('Product images processed:', {
+        primaryImage,
+        imageCount: productImages.length
+      });
     } else {
-      console.log('Product has no images, proceeding without image');
+      console.log('Product has no images, using placeholder');
       primaryImage = '';
       productImages = [];
     }
