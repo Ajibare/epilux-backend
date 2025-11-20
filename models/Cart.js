@@ -72,7 +72,10 @@ cartSchema.pre('save', function(next) {
 });
 
 // Create index for faster querying
-cartSchema.index({ user: 1 }, { unique: true });
+cartSchema.index({ user: 1 }, {
+   unique: true,
+   partialFilterExpression: { user: { $type: 'objectId' } }
+});
 
 const Cart = mongoose.models.Cart || mongoose.model('Cart', cartSchema);
 
