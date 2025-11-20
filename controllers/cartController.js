@@ -151,20 +151,44 @@ export const addToCart = async (req, res, next) => {
 
     // Find user's cart or create new one if it doesn't exist
     console.log('Looking for cart with user ID:', req.user._id);
-    let cart = await Cart.findOne({ user: req.user._id });
-    console.log('Found existing cart:', cart ? `ID: ${cart._id}` : 'No');
+    
+    // Ensure user ID is valid
+    if (!mongoose.Types.ObjectId.isValid(req.user._id)) {
+      console.error('Invalid user ID format:', req.user._id);
+      return next(new AppError('Invalid user ID format', 400));
+    }
 
-    if (!cart) {
-      console.log('Creating new cart with user ID:', req.user._id);
-      cart = new Cart({
-        user: req.user._id,
-        items: []
-      });
-      console.log('New cart created:', {
-        id: cart._id,
-        user: cart.user,
-        userExists: !!cart.user
-      });
+    // Convert to ObjectId for consistent comparison
+    const userId = new mongoose.Types.ObjectId(req.user._id);
+    
+    // Try to find existing cart
+    let cart;
+    try {
+      cart = await Cart.findOne({ user: userId });
+      console.log('Found existing cart:', cart ? `ID: ${cart._id}` : 'No cart found');
+      
+      if (!cart) {
+        console.log('Creating new cart with user ID:', userId);
+        cart = new Cart({
+          user: userId,
+          items: []
+        });
+        
+        // Validate the cart before saving
+        await cart.validate();
+        console.log('New cart validated successfully:', {
+          id: cart._id,
+          user: cart.user,
+          userType: typeof cart.user,
+          userExists: !!cart.user
+        });
+      }
+    } catch (error) {
+      console.error('Error finding/creating cart:', error);
+      if (error.name === 'ValidationError') {
+        return next(new AppError(`Validation error: ${error.message}`, 400));
+      }
+      throw error;
     }
 
     // Process product images - simplified approach
@@ -217,18 +241,45 @@ export const addToCart = async (req, res, next) => {
       });
     }
 
-    await cart.save();
+    try {
+      await cart.save();
+      console.log('Cart saved successfully:', {
+        cartId: cart._id,
+        userId: cart.user,
+        itemCount: cart.items.length
+      });
 
-    return res.status(200).json({
-      success: true,
-      message: 'Item added to cart',
-      data: {
-        id: cart._id,
-        items: cart.items,
-        totalItems: cart.totalItems,
-        subtotal: cart.subtotal
+      return res.status(200).json({
+        success: true,
+        message: 'Item added to cart',
+        data: {
+          id: cart._id,
+          items: cart.items,
+          totalItems: cart.totalItems,
+          subtotal: cart.subtotal
+        }
+      });
+    } catch (saveError) {
+      console.error('Error saving cart:', {
+        name: saveError.name,
+        message: saveError.message,
+        code: saveError.code,
+        keyPattern: saveError.keyPattern,
+        keyValue: saveError.keyValue,
+        stack: saveError.stack
+      });
+
+      if (saveError.name === 'MongoServerError' && saveError.code === 11000) {
+        // Duplicate key error
+        return next(new AppError(
+          `A cart with the same user already exists. ${JSON.stringify(saveError.keyValue)}`,
+          400
+        ));
       }
-    });
+      
+      // For other types of errors
+      return next(saveError);
+    }
   } catch (error) {
     next(error);
   }
