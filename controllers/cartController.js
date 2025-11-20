@@ -205,10 +205,10 @@ export const addToCart = async (req, res, next) => {
       // Add new item to cart with all images and primary image
       cart.items.push({
         product: product._id,
-        quantity,
-        price: product.price,
-        name: product.name,
-        image: primaryImage,
+        quantity: parseInt(quantity, 10),
+        price: req.body.price ? parseFloat(req.body.price) : product.price,
+        name: req.body.name || product.name,
+        image: req.body.image || primaryImage,
         images: productImages,
         productDetails: {
           stock: product.stock,
