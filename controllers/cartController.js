@@ -170,6 +170,25 @@ export const addToCart = async (req, res, next) => {
       
       if (!cart) {
         console.log('Creating new cart with user ID:', userId);
+        
+        // First, clean up any existing carts with null or missing user
+        try {
+          const deleteResult = await Cart.deleteMany({ 
+            $or: [
+              { user: null },
+              { user: { $exists: false } }
+            ] 
+          });
+          
+          if (deleteResult.deletedCount > 0) {
+            console.log(`Cleaned up ${deleteResult.deletedCount} carts with null or missing user`);
+          }
+        } catch (cleanupError) {
+          console.error('Error cleaning up null user carts:', cleanupError);
+          // Continue anyway, as this isn't critical
+        }
+
+        // Now create the new cart
         cart = new Cart({
           user: userId,
           items: []
@@ -271,14 +290,59 @@ export const addToCart = async (req, res, next) => {
       });
 
       if (saveError.name === 'MongoServerError' && saveError.code === 11000) {
-        // Duplicate key error
-        return next(new AppError(
-          `A cart with the same user already exists. ${JSON.stringify(saveError.keyValue)}`,
-          400
-        ));
+        // If we get a duplicate key error, try to find and use the existing cart
+        try {
+          console.log('Duplicate cart detected, attempting to find existing cart for user:', userId);
+          const existingCart = await Cart.findOne({ user: userId });
+          
+          if (existingCart) {
+            console.log('Found existing cart, merging items');
+            // Merge items from the new cart to the existing one
+            const existingItemIndex = existingCart.items.findIndex(
+              item => item.product.toString() === product._id.toString()
+            );
+
+            if (existingItemIndex > -1) {
+              // Update quantity if product already in cart
+              existingCart.items[existingItemIndex].quantity += quantity;
+            } else {
+              // Add new item to existing cart
+              existingCart.items.push({
+                product: product._id,
+                quantity: parseInt(quantity, 10),
+                price: req.body.price ? parseFloat(req.body.price) : product.price,
+                name: req.body.name || product.name,
+                image: req.body.image || primaryImage,
+                images: productImages,
+                productDetails: {
+                  stock: product.stock,
+                  sku: product.sku || ''
+                }
+              });
+            }
+
+            // Save the updated cart
+            await existingCart.save();
+            console.log('Successfully merged with existing cart');
+
+            return res.status(200).json({
+              success: true,
+              message: 'Item added to existing cart',
+              data: {
+                id: existingCart._id,
+                items: existingCart.items,
+                totalItems: existingCart.totalItems,
+                subtotal: existingCart.subtotal
+              }
+            });
+          }
+        } catch (mergeError) {
+          console.error('Error merging with existing cart:', mergeError);
+          return next(new AppError('Error processing your cart. Please try again.', 500));
+        }
       }
       
-      // For other types of errors
+      // For other types of errors or if we couldn't merge with an existing cart
       return next(saveError);
     }
   } catch (error) {
