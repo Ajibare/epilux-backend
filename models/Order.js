@@ -24,6 +24,26 @@ const statusHistorySchema = new Schema({
 });
 
 const orderSchema = new Schema({
+    // Payment information
+    payment: {
+        status: {
+            type: String,
+            enum: ['pending', 'success', 'failed', 'abandoned'],
+            default: 'pending'
+        },
+        method: String,
+        reference: String,
+        amount: Number,
+        amountPaid: Number,
+        currency: {
+            type: String,
+            default: 'NGN'
+        },
+        initiatedAt: Date,
+        verifiedAt: Date,
+        metadata: Object
+    },
+    
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',

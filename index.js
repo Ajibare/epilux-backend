@@ -252,8 +252,10 @@ import messageRoutes from './routes/messages.js';
 import cartRoutes from './routes/cart.js';
 import testAuthRoutes from './routes/testAuth.js';
 import walletRoutes from './routes/wallet.js';
+import paymentRoutes from './routes/payment.js';
 
 app.use('/api/auth', authRoutes);
+app.use('/api/payments', paymentRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/test-auth', testAuthRoutes);
 app.use('/api/products', productRoutes);
