@@ -253,9 +253,11 @@ import cartRoutes from './routes/cart.js';
 import testAuthRoutes from './routes/testAuth.js';
 import walletRoutes from './routes/wallet.js';
 import paymentRoutes from './routes/payment.js';
+import flutterwaveRoutes from './routes/flutterwave.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/flutterwave', flutterwaveRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/test-auth', testAuthRoutes);
 app.use('/api/products', productRoutes);

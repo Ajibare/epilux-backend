@@ -1,4 +1,4 @@
-import PaymentService from '../services/paymentService.js';
+// import PaymentService from '../services/paymentService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 export const initializePayment = async (req, res, next) => {
@@ -59,25 +59,25 @@ export const webhookHandler = async (req, res, next) => {
 };
 
 // Add this to handle payment verification from frontend
-export const checkPaymentStatus = async (req, res, next) => {
-    try {
-        const { reference } = req.params;
-        const order = await Order.findOne({ 'payment.reference': reference });
+// export const checkPaymentStatus = async (req, res, next) => {
+//     try {
+//         const { reference } = req.params;
+//         const order = await Order.findOne({ 'payment.reference': reference });
         
-        if (!order) {
-            throw new AppError('Order not found', 404);
-        }
+//         if (!order) {
+//             throw new AppError('Order not found', 404);
+//         }
 
-        res.status(200).json({
-            success: true,
-            data: {
-                status: order.payment.status,
-                reference: order.payment.reference,
-                amount: order.payment.amount,
-                orderId: order._id
-            }
-        });
-    } catch (error) {
-        next(error);
-    }
-};
+//         res.status(200).json({
+//             success: true,
+//             data: {
+//                 status: order.payment.status,
+//                 reference: order.payment.reference,
+//                 amount: order.payment.amount,
+//                 orderId: order._id
+//             }
+//         });
+//     } catch (error) {
+//         next(error);
+//     }
+// };
