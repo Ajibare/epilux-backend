@@ -22,6 +22,8 @@ export const checkWithdrawalEligibility = catchAsync(async (req, res) => {
         success: true,
         data: eligibility
     });
+
+    
 });
 
 // Request withdrawal for an order

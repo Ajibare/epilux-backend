@@ -20,6 +20,21 @@ router.get('/history', auth, (req, res) => commissionController.getCommissionHis
 // @access  Private
 router.get('/summary', auth, (req, res) => commissionController.getCommissionSummary(req, res));
 
+// @route   GET api/commission/balance
+// @desc    Get user's commission balance
+// @access  Private
+router.get('/balance', auth, (req, res) => commissionController.getCommissionBalance(req, res));
+
+// @route   POST api/commission/withdraw
+// @desc    Request commission withdrawal
+// @access  Private
+router.post('/withdraw', [
+  auth,
+  [
+    check('amount', 'Amount is required and must be positive').isFloat({ min: 0.01 })
+  ]
+], (req, res) => commissionController.requestCommissionWithdrawal(req, res));
+
 // @route   POST api/commission/process
 // @desc    Process commission for a sale (Admin only)
 // @access  Private/Admin

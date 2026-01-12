@@ -1,5 +1,6 @@
 import CommissionTransaction from '../models/CommissionTransaction.js';
 import User from '../models/User.js';
+import Wallet from '../models/Wallet.js';
 import { calculateCommissions } from '../config/commissionConfig.js';
 
 class CommissionService {
@@ -283,6 +284,99 @@ static async processSaleCommission(sale) {
       .limit(limit)
       .populate('fromUser', 'name email')
       .populate('productId', 'name');
+  }
+
+  /**
+   * Process marketer commission for completed order
+   * @param {Object} data - Commission data
+   * @returns {Promise<Object>} Processed commission result
+   */
+  static async processMarketerCommission(data) {
+    try {
+      const { orderId, marketerId, amount } = data;
+      
+      // Create commission transaction for marketer
+      const commission = await this.createCommissionTransaction({
+        userId: marketerId,
+        amount,
+        rate: 10, // Default marketer commission rate
+        type: 'marketer',
+        orderId,
+        productId: null, // Marketer commission is on total order
+        fromUser: null,
+        status: 'completed'
+      });
+
+      // Update marketer's commission balance
+      await User.findByIdAndUpdate(marketerId, {
+        $inc: { 
+          'commissionBalance.pending': amount,
+          'stats.totalCommissionEarned': amount
+        }
+      });
+
+      // Transfer to wallet immediately for marketers
+      await Wallet.findOneAndUpdate(
+        { userId: marketerId },
+        {
+          $inc: {
+            availableBalance: amount,
+            totalEarned: amount
+          },
+          lastUpdated: new Date()
+        },
+        { upsert: true, new: true }
+      );
+
+      return {
+        success: true,
+        commission,
+        amount
+      };
+    } catch (error) {
+      console.error('Error processing marketer commission:', error);
+      throw new Error(`Marketer commission processing failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Release commission to wallet when order is completed
+   * @param {string} userId - User ID
+   * @param {number} amount - Commission amount
+   * @returns {Promise<Object>} Transfer result
+   */
+  static async releaseCommissionToWallet(userId, amount) {
+    try {
+      // Move from pending to available commission balance
+      await User.findByIdAndUpdate(userId, {
+        $inc: { 
+          'commissionBalance.pending': -amount,
+          'commissionBalance.available': amount
+        }
+      });
+
+      // Transfer to wallet
+      await Wallet.findOneAndUpdate(
+        { userId },
+        {
+          $inc: {
+            availableBalance: amount,
+            totalEarned: amount
+          },
+          lastUpdated: new Date()
+        },
+        { upsert: true, new: true }
+      );
+
+      return {
+        success: true,
+        amount,
+        message: 'Commission released to wallet'
+      };
+    } catch (error) {
+      console.error('Error releasing commission to wallet:', error);
+      throw new Error(`Commission release failed: ${error.message}`);
+    }
   }
 }
 

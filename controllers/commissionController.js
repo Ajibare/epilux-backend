@@ -1,6 +1,8 @@
 import CommissionService from '../services/commissionService.js';
 import { validationResult } from 'express-validator';
 import CommissionTransaction from '../models/CommissionTransaction.js';
+import User from '../models/User.js';
+import Commission from '../models/Commission.js';
 import { NotFoundError } from '../middleware/errorHandler.js';
 
 const commissionController = {
@@ -173,6 +175,130 @@ const commissionController = {
         success: false,
         message: 'Failed to update commission status',
         error: error.message
+      });
+    }
+  },
+
+  /**
+   * @desc    Request commission withdrawal
+   * @route   POST /api/commission/withdraw
+   * @access  Private
+   * @body    {number} amount - Withdrawal amount
+   */
+  requestCommissionWithdrawal: async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation error',
+          errors: errors.array()
+        });
+      }
+
+      const { amount } = req.body;
+      const userId = req.user._id;
+
+      // Validate input
+      if (!amount || isNaN(amount) || amount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid positive amount is required'
+        });
+      }
+
+      // Get user and check commission balance
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      const availableCommission = user.commissionBalance?.available || 0;
+      if (availableCommission < amount) {
+        return res.status(400).json({
+          success: false,
+          message: 'Insufficient commission balance',
+          data: {
+            requested: amount,
+            available: availableCommission
+          }
+        });
+      }
+
+      // Create withdrawal record
+      const withdrawal = new Commission({
+        user: userId,
+        amount: parseFloat(amount),
+        type: 'withdrawal',
+        description: 'Commission withdrawal request',
+        status: 'pending',
+        approvedBy: null
+      });
+
+      await withdrawal.save();
+
+      // Update user's commission balance (move from available to pending)
+      user.commissionBalance.available -= parseFloat(amount);
+      user.commissionBalance.pendingWithdrawal += parseFloat(amount);
+      await user.save();
+
+      res.status(201).json({
+        success: true,
+        message: 'Commission withdrawal request submitted',
+        data: {
+          withdrawalId: withdrawal._id,
+          amount: parseFloat(amount),
+          status: 'pending',
+          availableBalance: user.commissionBalance.available,
+          pendingWithdrawal: user.commissionBalance.pendingWithdrawal
+        }
+      });
+
+    } catch (error) {
+      console.error('Commission withdrawal error:', error);
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || 'Error processing withdrawal request'
+      });
+    }
+  },
+
+  /**
+   * @desc    Get user's commission balance
+   * @route   GET /api/commission/balance
+   * @access  Private
+   */
+  getCommissionBalance: async (req, res) => {
+    try {
+      const userId = req.user._id;
+      
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          pending: user.commissionBalance?.pending || 0,
+          available: user.commissionBalance?.available || 0,
+          lifetime: user.commissionBalance?.lifetime || 0,
+          pendingWithdrawal: user.commissionBalance?.pendingWithdrawal || 0,
+          totalWithdrawn: user.commissionBalance?.totalWithdrawn || 0
+        }
+      });
+
+    } catch (error) {
+      console.error('Get commission balance error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error fetching commission balance'
       });
     }
   },

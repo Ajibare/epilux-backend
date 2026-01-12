@@ -1,6 +1,7 @@
 import Order from '../models/Order.js';
 import User from '../models/User.js';
 import CommissionService from './commissionService.js';
+import Wallet from '../models/Wallet.js';
 
 class MarketerService {
     // Assign order to a marketer
@@ -165,6 +166,9 @@ class MarketerService {
             throw error;
         }
     }
+
+    
+
 }
 
 export default MarketerService;

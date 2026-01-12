@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
+import Wallet from '../models/Wallet.js';
 import CommissionService from '../services/commissionService.js';
 import MarketerService from '../services/marketerService.js';
 import SeasonalPromoService from '../services/seasonalPromoService.js';
@@ -16,6 +17,18 @@ const createOrder = async (req, res) => {
     
     try {
         const { items, shippingAddress, paymentMethod, totalAmount, customerInfo } = req.body;
+
+        if (paymentMethod === 'wallet') {
+            const wallet = await Wallet.findOne({ userId: req.user.id }).session(session);
+            if (!wallet || wallet.availableBalance < totalAmount) {
+                throw new AppError('Insufficient wallet balance', 400);
+            }
+
+            // Lock funds during order processing
+            wallet.availableBalance -= totalAmount;
+            wallet.lockedAmount += totalAmount;
+            await wallet.save({ session });
+        }
         
         // Validate required fields
         if (!customerInfo?.phone || !shippingAddress?.address || !shippingAddress?.city || !shippingAddress?.state) {
