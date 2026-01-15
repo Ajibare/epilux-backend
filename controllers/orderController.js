@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import Wallet from '../models/Wallet.js';
+import User from '../models/User.js';
 import CommissionService from '../services/commissionService.js';
 import MarketerService from '../services/marketerService.js';
 import SeasonalPromoService from '../services/seasonalPromoService.js';
@@ -55,7 +56,13 @@ const createOrder = async (req, res) => {
         }
         
         if (!customerInfo || typeof customerInfo !== 'object') {
-            throw new AppError('Customer information is required and must be an object', 400);
+            // customerInfo is optional - use user data from database
+            const user = await User.findById(req.user.id);
+            customerInfo = {
+                name: user.name || user.firstName || '',
+                phone: user.phone || '',
+                email: user.email || ''
+            };
         }
         
         if (!paymentMethod || typeof paymentMethod !== 'string') {
@@ -78,10 +85,13 @@ const createOrder = async (req, res) => {
             await wallet.save({ session });
         }
         
-        // Validate required fields
+        // Validate required fields (phone is only required if customerInfo was provided in request)
         const missingFields = [];
         
-        if (!customerInfo?.phone) missingFields.push('customerInfo.phone');
+        if (customerInfo.phone && !customerInfo.phone.trim()) {
+            missingFields.push('customerInfo.phone');
+        }
+        
         if (!shippingAddress?.address) missingFields.push('shippingAddress.address');
         if (!shippingAddress?.city) missingFields.push('shippingAddress.city');
         if (!shippingAddress?.state) missingFields.push('shippingAddress.state');
