@@ -17,6 +17,54 @@ const createOrder = async (req, res) => {
     
     try {
         const { items, shippingAddress, paymentMethod, totalAmount, customerInfo } = req.body;
+        
+        // Debug logging
+        console.log('=== ORDER CREATION DEBUG ===');
+        console.log('Request body:', {
+            items: items ? `${items.length} items` : 'MISSING',
+            shippingAddress: shippingAddress ? 'PRESENT' : 'MISSING',
+            paymentMethod: paymentMethod || 'MISSING',
+            totalAmount: totalAmount || 'MISSING',
+            customerInfo: customerInfo ? 'PRESENT' : 'MISSING'
+        });
+        
+        if (customerInfo) {
+            console.log('CustomerInfo fields:', {
+                phone: customerInfo.phone || 'MISSING',
+                name: customerInfo.name || 'MISSING',
+                email: customerInfo.email || 'MISSING'
+            });
+        }
+        
+        if (shippingAddress) {
+            console.log('ShippingAddress fields:', {
+                address: shippingAddress.address || 'MISSING',
+                city: shippingAddress.city || 'MISSING',
+                state: shippingAddress.state || 'MISSING',
+                country: shippingAddress.country || 'MISSING'
+            });
+        }
+        
+        // Validate request body structure
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            throw new AppError('Items array is required and cannot be empty', 400);
+        }
+        
+        if (!shippingAddress || typeof shippingAddress !== 'object') {
+            throw new AppError('Shipping address is required and must be an object', 400);
+        }
+        
+        if (!customerInfo || typeof customerInfo !== 'object') {
+            throw new AppError('Customer information is required and must be an object', 400);
+        }
+        
+        if (!paymentMethod || typeof paymentMethod !== 'string') {
+            throw new AppError('Payment method is required', 400);
+        }
+        
+        if (!totalAmount || typeof totalAmount !== 'number' || totalAmount <= 0) {
+            throw new AppError('Total amount must be a positive number', 400);
+        }
 
         if (paymentMethod === 'wallet') {
             const wallet = await Wallet.findOne({ userId: req.user.id }).session(session);
@@ -31,8 +79,15 @@ const createOrder = async (req, res) => {
         }
         
         // Validate required fields
-        if (!customerInfo?.phone || !shippingAddress?.address || !shippingAddress?.city || !shippingAddress?.state) {
-            throw new AppError('Customer information and shipping address are required', 400);
+        const missingFields = [];
+        
+        if (!customerInfo?.phone) missingFields.push('customerInfo.phone');
+        if (!shippingAddress?.address) missingFields.push('shippingAddress.address');
+        if (!shippingAddress?.city) missingFields.push('shippingAddress.city');
+        if (!shippingAddress?.state) missingFields.push('shippingAddress.state');
+        
+        if (missingFields.length > 0) {
+            throw new AppError(`Missing required fields: ${missingFields.join(', ')}`, 400);
         }
         
         // Validate items and update stock
