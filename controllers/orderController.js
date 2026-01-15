@@ -17,7 +17,9 @@ const createOrder = async (req, res) => {
     session.startTransaction();
     
     try {
-        const { items, shippingAddress, paymentMethod, totalAmount, customerInfo } = req.body;
+        const { items, shippingAddress, paymentMethod, totalAmount, customerInfo: initialCustomerInfo } = req.body;
+        
+        let customerInfo = initialCustomerInfo;
         
         // Debug logging
         console.log('=== ORDER CREATION DEBUG ===');
