@@ -48,6 +48,12 @@ const config = {
   PAYSTACK_PUBLIC_KEY: process.env.PAYSTACK_PUBLIC_KEY || '',
   PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY || '',
 
+  // Flutterwave configuration
+  FLUTTERWAVE_SECRET_KEY: process.env.FLUTTERWAVE_SECRET_KEY,
+  FLUTTERWAVE_PUBLIC_KEY: process.env.FLUTTERWAVE_PUBLIC_KEY,
+  FLUTTERWAVE_BASE_URL: process.env.FLUTTERWAVE_BASE_URL || 'https://api.flutterwave.com/v3',
+  FLUTTERWAVE_WEBHOOK_HASH: process.env.FLUTTERWAVE_WEBHOOK_HASH,
+
   // Logging
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
   LOG_FILE: process.env.LOG_FILE || 'logs/app.log',
@@ -73,6 +79,14 @@ if (config.NODE_ENV === 'production') {
       throw new Error(`❌ Missing required environment variable: ${envVar}`);
     }
   });
+}
+
+// Validate Flutterwave configuration
+if (!config.FLUTTERWAVE_SECRET_KEY) {
+  console.warn('⚠️ FLUTTERWAVE_SECRET_KEY not configured - Flutterwave payments will fail');
+}
+if (!config.FLUTTERWAVE_PUBLIC_KEY) {
+  console.warn('⚠️ FLUTTERWAVE_PUBLIC_KEY not configured - Flutterwave payments will fail');
 }
 
 // Logging mode info

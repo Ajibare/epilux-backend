@@ -1,13 +1,11 @@
 import axios from 'axios';
-import dotenv from 'dotenv';
+import config from '../config/environment.js';
 import Order from '../models/Order.js';
 import { AppError } from '../middleware/errorHandler.js';
 
-dotenv.config();
-
-const FLUTTERWAVE_BASE_URL = process.env.FLUTTERWAVE_BASE_URL || 'https://api.flutterwave.com/v3';
-const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY;
-const FLUTTERWAVE_PUBLIC_KEY = process.env.FLUTTERWAVE_PUBLIC_KEY;
+const FLUTTERWAVE_BASE_URL = config.FLUTTERWAVE_BASE_URL;
+const FLUTTERWAVE_SECRET_KEY = config.FLUTTERWAVE_SECRET_KEY;
+const FLUTTERWAVE_PUBLIC_KEY = config.FLUTTERWAVE_PUBLIC_KEY;
 
 class FlutterwaveService {
     static async initializePayment(orderId, amount, customer, callbackUrl) {
@@ -135,7 +133,7 @@ class FlutterwaveService {
     static async handleWebhook(payload, signature) {
         try {
             // Verify webhook signature
-            const secretHash = process.env.FLUTTERWAVE_WEBHOOK_HASH;
+            const secretHash = config.FLUTTERWAVE_WEBHOOK_HASH;
             
             // Verify the webhook signature
             const crypto = await import('crypto');
