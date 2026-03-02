@@ -46,58 +46,12 @@ const orderSchema = new Schema({
     
     userId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+        ref: 'User'
     },
     orderNumber: {
         type: String,
         required: true,
         unique: true
-    },
-    items: [{
-        productId: {
-            type: String,
-            required: true
-        },
-        name: {
-            type: String,
-            required: true
-        },
-        quantity: {
-            type: Number,
-            required: true,
-            min: 1
-        },
-        price: {
-            type: Number,
-            required: true,
-            min: 0
-        },
-        subtotal: {
-            type: Number,
-            required: true,
-            min: 0
-        }
-    }],
-    subtotal: {
-        type: Number,
-        required: true,
-        min: 0
-    },
-    tax: {
-        type: Number,
-        required: true,
-        min: 0
-    },
-    shipping: {
-        type: Number,
-        required: true,
-        min: 0
-    },
-    total: {
-        type: Number,
-        required: true,
-        min: 0
     },
     status: {
         type: String,
@@ -157,8 +111,7 @@ const orderSchema = new Schema({
     },
     paymentMethod: {
         type: String,
-        enum: ['card', 'bank_transfer', 'cash_on_delivery', 'wallet'],
-        required: true
+        enum: ['card', 'bank_transfer', 'cash_on_delivery', 'wallet', 'flutterwave']
     },
     paymentStatus: {
         type: String,
@@ -192,7 +145,7 @@ const orderSchema = new Schema({
         trim: true
     },
     shippingAddress: {
-        street: {
+        address: {
             type: String,
             required: true
         },
@@ -204,14 +157,10 @@ const orderSchema = new Schema({
             type: String,
             required: true
         },
-        country: {
-            type: String,
-            required: true
-        },
-        zipCode: {
-            type: String,
-            required: true
-        }
+        country: String,
+        zipCode: String,
+        landmark: String,
+        deliveryInstructions: String
     },
     billingAddress: {
         street: String,
@@ -231,8 +180,7 @@ const orderSchema = new Schema({
     },
     buyer: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+        ref: 'User'
     },
     previousMarketers: [{
         marketerId: {

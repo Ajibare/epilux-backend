@@ -127,29 +127,24 @@ const createOrder = async (req, res) => {
             // Create order
             const order = new Order({
                 orderNumber,
-                user: req.user.id,
+                userId: req.user.id,
+                buyer: req.user.id,
                 items: items.map(item => ({
                     product: item.product,
                     quantity: item.quantity,
                     price: item.price
                 })),
-                customerInfo: {
-                    name: customerInfo.name || req.user.name,
-                    phone: customerInfo.phone,
-                    email: customerInfo.email || req.user.email
-                },
                 shippingAddress: {
                     address: shippingAddress.address,
                     city: shippingAddress.city,
                     state: shippingAddress.state,
+                    country: shippingAddress.country || 'Nigeria',
                     landmark: shippingAddress.landmark,
                     deliveryInstructions: shippingAddress.deliveryInstructions
                 },
                 paymentMethod,
                 totalAmount,
                 status: 'pending',
-                createdBy: req.user.id,
-                commissionRate: 10, // Default commission rate
                 referralInfo: {
                     referredBy: req.user.referredBy || null
                 },
@@ -203,7 +198,6 @@ const createOrder = async (req, res) => {
                     orderNumber: order.orderNumber,
                     status: order.status,
                     totalAmount: order.totalAmount,
-                    customerInfo: order.customerInfo,
                     shippingAddress: order.shippingAddress,
                     items: order.items,
                     createdAt: order.createdAt
