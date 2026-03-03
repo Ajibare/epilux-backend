@@ -146,7 +146,7 @@ const createOrder = async (req, res) => {
                 totalAmount,
                 status: 'pending',
                 referralInfo: {
-                    referredBy: req.user.referredBy || null
+                    referredBy: req.user.referredBy?.user || req.user.referredBy || null
                 },
                 statusHistory: [{
                     status: 'pending',
