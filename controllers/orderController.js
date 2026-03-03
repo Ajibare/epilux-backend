@@ -118,6 +118,40 @@ const createOrder = async (req, res) => {
             await product.save({ session });
         }
 
+        // Debug referralInfo
+        console.log('=== REFERRAL DEBUG ===');
+        console.log('req.user.referredBy:', JSON.stringify(req.user.referredBy, null, 2));
+        console.log('req.user.referredBy?.user:', req.user.referredBy?.user);
+        
+        // Extract referredBy correctly - handle all possible formats
+        let referredBy = null;
+        try {
+            if (req.user.referredBy) {
+                // If it's a string ObjectId
+                if (typeof req.user.referredBy === 'string') {
+                    referredBy = req.user.referredBy;
+                }
+                // If it's an object with user property
+                else if (typeof req.user.referredBy === 'object' && req.user.referredBy.user) {
+                    referredBy = req.user.referredBy.user;
+                }
+                // If it's an object with _id property
+                else if (typeof req.user.referredBy === 'object' && req.user.referredBy._id) {
+                    referredBy = req.user.referredBy._id;
+                }
+                // If it's already a valid ObjectId
+                else if (req.user.referredBy.toString && req.user.referredBy.toString().length === 24) {
+                    referredBy = req.user.referredBy.toString();
+                }
+            }
+        } catch (error) {
+            console.log('Error processing referredBy:', error);
+            referredBy = null;
+        }
+        
+        console.log('Final referredBy:', referredBy);
+        console.log('=== END REFERRAL DEBUG ===');
+
         // Create order in transaction
         try {
 
@@ -146,7 +180,7 @@ const createOrder = async (req, res) => {
                 totalAmount,
                 status: 'pending',
                 referralInfo: {
-                    referredBy: req.user.referredBy?.user || req.user.referredBy || null
+                    referredBy: referredBy
                 },
                 statusHistory: [{
                     status: 'pending',
