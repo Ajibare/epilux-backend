@@ -19,14 +19,52 @@ import {
     getUserOrders, 
     getOrderStats,
     markAsDelivered,
-    confirmDelivery
+    confirmDelivery,
+    cancelOrder
 } from '../controllers/orderController.js';
 
 const router = express.Router();
 
+// Track order (public - no auth required)
+router.get('/:id/track', catchAsync(async (req, res) => {
+    try {
+        const { id } = req.params;
+        const order = await Order.findById(id)
+            .select('orderNumber status trackingNumber createdAt updatedAt inTransitAt deliveredAt completedAt cancelledAt')
+            .populate('marketer', 'name phone');
+        
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
 
+        res.json({
+            success: true,
+            data: {
+                orderNumber: order.orderNumber,
+                status: order.status,
+                trackingNumber: order.trackingNumber,
+                estimatedDelivery: order.estimatedDelivery,
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt,
+                inTransitAt: order.inTransitAt,
+                deliveredAt: order.deliveredAt,
+                completedAt: order.completedAt,
+                cancelledAt: order.cancelledAt,
+                marketer: order.marketer
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error tracking order'
+        });
+    }
+}));
 
-// Apply authentication middleware to all routes
+// Apply authentication middleware to all routes except tracking
 router.use(authenticate);
 
 // Create a new order
@@ -57,6 +95,9 @@ router.get('/my-orders', catchAsync(getUserOrders));
 
 // Get single order
 router.get('/:id', catchAsync(getOrder));
+
+// Cancel order (user only)
+router.patch('/:id/cancel', catchAsync(cancelOrder));
 
 // Update order status (admin only)
 router.patch(
