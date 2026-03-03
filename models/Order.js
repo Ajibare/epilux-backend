@@ -14,8 +14,7 @@ const statusHistorySchema = new Schema({
     },
     changedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+        ref: 'User'
     },
     note: {
         type: String,
