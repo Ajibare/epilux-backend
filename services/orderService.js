@@ -146,7 +146,13 @@ class OrderService {
 
     // Get orders for a specific user
     static async getUserOrders(userId, status) {
-        const query = { user: userId };
+        const query = { 
+            $or: [
+                { userId: userId },
+                { buyer: userId },
+                { user: userId }
+            ]
+        };
         if (status) {
             query.status = status;
         }
