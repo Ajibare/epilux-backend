@@ -80,7 +80,10 @@ class OrderService {
     static async cancelOrder(orderId, userId, reason = '') {
         const order = await Order.findOne({
             _id: orderId,
-            user: userId,
+            $or: [
+                { userId: userId },
+                { buyer: userId }
+            ],
             status: { $in: ['pending', 'processing', 'assigned'] }
         });
 
@@ -121,20 +124,25 @@ class OrderService {
         
         // Non-admin users can only see their own orders
         if (userRole !== 'admin' && userRole !== 'marketer') {
-            query.user = userId;
+            query.$or = [
+                { userId: userId },
+                { buyer: userId }
+            ];
         }
         
         // Marketers can only see their assigned orders
         if (userRole === 'marketer') {
             query.$or = [
                 { marketer: userId },
-                { user: userId }
+                { userId: userId },
+                { buyer: userId }
             ];
         }
 
         const order = await Order.findOne(query)
-            .populate('user', 'name email phone')
-            .populate('marketer', 'name phone')
+            .populate('userId', 'firstName lastName email phone')
+            .populate('buyer', 'firstName lastName email phone')
+            .populate('marketer', 'firstName lastName phone')
             .populate('items.product', 'name price');
 
         if (!order) {

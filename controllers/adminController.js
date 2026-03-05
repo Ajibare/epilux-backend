@@ -590,11 +590,38 @@ const updateUser = async (req, res) => {
     const { id } = req.params;
     const { firstName, lastName, email, role, isActive } = req.body;
 
+    // Check if user is trying to update their own role
+    if (id === req.user._id.toString() && role && role !== req.user.role) {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot change your own role',
+        error: 'SELF_ROLE_CHANGE_NOT_ALLOWED'
+      });
+    }
+
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
+      });
+    }
+
+    // Prevent non-admins from changing roles
+    if (role && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required to change roles.',
+        error: 'ROLE_CHANGE_ADMIN_ONLY'
+      });
+    }
+
+    // Prevent admins from changing other admins' roles
+    if (role && user.role === 'admin' && req.user.role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot change another admin user\'s role',
+        error: 'ADMIN_ROLE_CHANGE_NOT_ALLOWED'
       });
     }
 
@@ -1148,25 +1175,50 @@ export const updateUserRole = async (req, res) => {
         const { role } = req.body;
         const { id } = req.params;
         
-        if (!['user', 'admin', 'affiliate'].includes(role)) {
-            return res.status(400).json({
+        // Check if user is admin
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({
                 success: false,
-                message: 'Invalid role. Must be one of: user, admin, affiliate'
+                message: 'Access denied. Admin privileges required to change roles.',
+                error: 'ROLE_CHANGE_ADMIN_ONLY'
             });
         }
 
-        const user = await User.findByIdAndUpdate(
-            id,
-            { role },
-            { new: true, runValidators: true }
-        ).select('-password');
+        // Prevent admin from changing their own role
+        if (id === req.user._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Cannot change your own role',
+                error: 'SELF_ROLE_CHANGE_NOT_ALLOWED'
+            });
+        }
+        
+        if (!['user', 'admin', 'affiliate', 'marketer'].includes(role)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid role. Must be one of: user, admin, affiliate, marketer'
+            });
+        }
 
+        const user = await User.findById(id);
         if (!user) {
             return res.status(404).json({
                 success: false,
                 message: 'User not found'
             });
         }
+
+        // Prevent admins from changing other admins' roles
+        if (user.role === 'admin' && req.user.role === 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Cannot change another admin user\'s role',
+                error: 'ADMIN_ROLE_CHANGE_NOT_ALLOWED'
+            });
+        }
+
+        user.role = role;
+        await user.save();
 
         res.status(200).json({
             success: true,
@@ -1244,7 +1296,7 @@ const createUpdateCommissionRate = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error updating commission rate',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: error.message
     });
   }
 }

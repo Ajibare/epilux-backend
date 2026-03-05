@@ -433,8 +433,10 @@ const formatOrderResponse = (order) => {
 const getOrders = async (req, res) => {
     try {
         const orders = await Order.find()
-            .populate('user', 'name email')
-            .populate('items.product', 'name price');
+            .populate('userId', 'firstName lastName email')
+            .populate('buyer', 'firstName lastName email')
+            .populate('items.product', 'name price')
+            .sort({ createdAt: -1 });
         
         res.json({
             success: true,
@@ -454,7 +456,8 @@ const getOrders = async (req, res) => {
 const getOrder = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id)
-            .populate('user', 'name email')
+            .populate('userId', 'firstName lastName email')
+            .populate('buyer', 'firstName lastName email')
             .populate('items.product', 'name price');
         
         if (!order) {
