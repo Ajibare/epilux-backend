@@ -31,13 +31,13 @@ const calculateCustomerRetention = async () => {
         {
           $lookup: {
             from: 'orders',
-            let: { customerId: '$user' },
+            let: { customerId: '$userId' },
             pipeline: [
               {
                 $match: {
                   $expr: {
                     $and: [
-                      { $eq: ['$user', '$$customerId'] },
+                      { $eq: ['$userId', '$$customerId'] },
                       { $lt: ['$createdAt', thirtyDaysAgo] },
                       { $gte: ['$createdAt', sixtyDaysAgo] },
                       { $eq: ['$status', 'completed'] }
@@ -56,14 +56,14 @@ const calculateCustomerRetention = async () => {
         },
         {
           $group: {
-            _id: '$user'
+            _id: '$userId'
           }
         },
         {
           $count: 'count'
         }
       ]),
-      Order.distinct('user', {
+      Order.distinct('userId', {
         createdAt: { $lt: thirtyDaysAgo, $gte: sixtyDaysAgo },
         status: 'completed'
       }).then(users => users.length)
@@ -200,7 +200,8 @@ const getRecentOrders = async (limit = 5) => {
     const orders = await Order.find()
       .sort({ createdAt: -1 })
       .limit(limit)
-      .populate('user', 'firstName lastName email')
+      .populate('userId', 'firstName lastName email')
+      .populate('buyer', 'firstName lastName email')
       .lean();
       
     return orders.map(order => ({
@@ -208,7 +209,7 @@ const getRecentOrders = async (limit = 5) => {
       id: order._id,
       status: order.status,
       amount: order.totalAmount,
-      customer: order.user,
+      customer: order.userId || order.buyer,
       timestamp: order.createdAt,
       message: `New ${order.status} order for $${order.totalAmount.toFixed(2)}`
     }));
@@ -452,7 +453,8 @@ const getDashboardStats = async (req, res) => {
       Order.find()
         .sort({ createdAt: -1 })
         .limit(5)
-        .populate('user', 'firstName lastName email')
+        .populate('userId', 'firstName lastName email')
+        .populate('buyer', 'firstName lastName email')
         .lean()
     ]);
 
