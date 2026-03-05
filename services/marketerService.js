@@ -9,7 +9,7 @@ class MarketerService {
         try {
             // Find available marketers (you can add more criteria like location, availability, etc.)
             const availableMarketers = await User.find({
-                role: 'marketer',
+                role: { $in: ['marketer', 'affiliate'] },
                 isActive: true
             }).sort({ assignedOrdersCount: 1 }); // Assign to marketer with least orders
 

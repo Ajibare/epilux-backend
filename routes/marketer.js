@@ -19,6 +19,11 @@ router.get('/dashboard', protect, marketerController.getDashboard);
 // @access  Private/Marketer
 router.get('/orders', protect, marketerController.getAssignedOrders);
 
+// @desc    Get marketer's assigned products
+// @route   GET /api/marketer/products
+// @access  Private/Marketer
+router.get('/products', protect, marketerController.getAssignedProducts);
+
 // @desc    Update order status
 // @route   PUT /api/marketer/orders/:id/status
 // @access  Private/Marketer

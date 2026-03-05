@@ -5,6 +5,35 @@ import Product from '../models/Product.js';
 import { NotFoundError } from '../middleware/errorHandler.js';
 
 /**
+ * @desc    Get marketer's assigned products
+ * @route   GET /api/marketer/products
+ * @access  Private/Marketer
+ */
+export const getAssignedProducts = async (req, res) => {
+    try {
+        const marketerId = req.user.id;
+        
+        // Get products assigned to this marketer
+        const products = await Product.find({ assignedMarketer: marketerId })
+            .select('name price stock images category description isActive')
+            .sort({ createdAt: -1 });
+        
+        res.status(200).json({
+            success: true,
+            count: products.length,
+            data: products
+        });
+        
+    } catch (error) {
+        console.error('Get assigned products error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
+/**
  * @desc    Get marketer's referrals
  * @route   GET /api/marketer/referrals
  * @access  Private/Marketer
@@ -331,5 +360,6 @@ export default {
     getDashboard,
     getReferrals,
     getAssignedOrders,
+    getAssignedProducts,
     updateOrderStatus
 };
