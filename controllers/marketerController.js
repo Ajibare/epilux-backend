@@ -55,7 +55,7 @@ export const getAssignedOrders = async (req, res) => {
         // Get orders with pagination
         const orders = await Order.find(query)
             .populate('userId', 'name email phone')
-            .populate('items.productId', 'name price images')
+            .populate('items.product', 'name price images')
             .sort({ createdAt: -1 })
             .skip(parseInt(skip))
             .limit(parseInt(limit))
@@ -68,16 +68,16 @@ export const getAssignedOrders = async (req, res) => {
             _id: order._id,
             orderNumber: order.orderNumber,
             status: order.status,
-            total: order.total,
+            total: order.totalAmount,
             items: order.items.map(item => ({
-                productId: item.productId?._id,
-                name: item.name || item.productId?.name,
+                productId: item.product?._id,
+                name: item.name || item.product?.name,
                 quantity: item.quantity,
                 price: item.price,
-                image: item.productId?.images?.[0]?.url || null
+                image: item.product?.images?.[0]?.url || null
             })),
             customer: {
-                name: order.userId?.name,
+                name: order.userId?.name || `${order.userId?.firstName || ''} ${order.userId?.lastName || ''}`.trim(),
                 phone: order.userId?.phone,
                 email: order.userId?.email
             },
