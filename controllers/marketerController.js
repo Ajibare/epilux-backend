@@ -74,7 +74,15 @@ export const getAssignedOrders = async (req, res) => {
         const { status, page = 1, limit = 10 } = req.query;
         const skip = (page - 1) * limit;
         
+        // Debug logging
+        console.log('=== DEBUG MARKETER ORDERS ===');
+        console.log('req.user.id:', req.user.id);
+        console.log('req.user.email:', req.user.email);
+        console.log('req.user.role:', req.user.role);
+        console.log('status filter:', status);
+        
         const query = { marketer: req.user.id };
+        console.log('Query:', JSON.stringify(query, null, 2));
         
         // Filter by status if provided
         if (status) {
@@ -90,7 +98,19 @@ export const getAssignedOrders = async (req, res) => {
             .limit(parseInt(limit))
             .lean();
             
+        console.log('Orders found:', orders.length);
+        
         const total = await Order.countDocuments(query);
+        console.log('Total count:', total);
+        
+        // Check if marketer exists
+        const marketer = await User.findById(req.user.id);
+        console.log('Marketer in DB:', marketer ? marketer.email : 'Not found');
+        
+        // Check all orders for this marketer
+        const allMarketerOrders = await Order.find({ marketer: req.user.id });
+        console.log('All orders for this marketer:', allMarketerOrders.length);
+        console.log('=== END DEBUG ===');
         
         // Format the response
         const formattedOrders = orders.map(order => ({
