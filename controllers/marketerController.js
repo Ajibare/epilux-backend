@@ -233,18 +233,39 @@ export const getDashboard = async (req, res) => {
     try {
         const marketerId = req.user.id;
         
+        // Debug logging
+        console.log('=== DEBUG MARKETER DASHBOARD ===');
+        console.log('marketerId:', marketerId);
+        console.log('marketerId type:', typeof marketerId);
+        
         // Get order counts by status
         const orderStats = await Order.aggregate([
             { $match: { marketer: new mongoose.Types.ObjectId(marketerId) } },
             { $group: { _id: '$status', count: { $sum: 1 } } }
         ]);
+        
+        console.log('Order stats:', orderStats);
 
         // Get recent orders
         const recentOrders = await Order.find({ marketer: marketerId })
             .sort('-createdAt')
             .limit(5)
-            .populate('userId', 'name email')
-            .select('orderNumber status totalAmount createdAt');
+            .populate('userId', 'firstName lastName email')
+            .populate('buyer', 'firstName lastName email')
+            .select('orderNumber status totalAmount createdAt userId buyer');
+
+        console.log('Recent orders found:', recentOrders.length);
+        
+        // Format recent orders for response
+        const formattedRecentOrders = recentOrders.map(order => ({
+            orderNumber: order.orderNumber,
+            status: order.status,
+            totalAmount: order.totalAmount,
+            customer: order.userId || order.buyer,
+            createdAt: order.createdAt
+        }));
+
+        console.log('=== END DEBUG DASHBOARD ===');
 
         // Calculate statistics
         const stats = {
@@ -254,7 +275,7 @@ export const getDashboard = async (req, res) => {
             delivered: 0,
             completed: 0,
             cancelled: 0,
-            recentOrders
+            recentOrders: formattedRecentOrders
         };
 
         // Process order statistics
