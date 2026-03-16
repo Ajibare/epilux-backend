@@ -240,7 +240,7 @@ export const getDashboard = async (req, res) => {
         
         // Get order counts by status
         const orderStats = await Order.aggregate([
-            { $match: { marketer: new mongoose.Types.ObjectId(marketerId) } },
+            { $match: { marketer: marketerId } },
             { $group: { _id: '$status', count: { $sum: 1 } } }
         ]);
         
