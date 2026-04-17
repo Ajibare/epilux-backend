@@ -1,2 +1,2 @@
-import handler from '../index.js';
-export default handler;
+import app from '../index';
+module.exports = app;
