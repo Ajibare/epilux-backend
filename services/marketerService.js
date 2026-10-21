@@ -1,181 +1,239 @@
+import mongoose from 'mongoose';
 import Order from '../models/Order.js';
 import User from '../models/User.js';
-import CommissionService from './commissionService.js';
-import Wallet from '../models/Wallet.js';
+import { AppError } from '../middleware/errorHandler.js';
+import { releaseOrderEarnings } from './earningsService.js';
+
+// Days a marketer has to complete a delivery before it is reassigned
+const ASSIGNMENT_DAYS = 7;
 
 class MarketerService {
-    // Assign order to a marketer
-    static async assignOrder(orderId) {
-        try {
-            // Find available marketers (you can add more criteria like location, availability, etc.)
-            const availableMarketers = await User.find({
-                role: { $in: ['marketer', 'affiliate'] },
-                isActive: true
-            }).sort({ assignedOrdersCount: 1 }); // Assign to marketer with least orders
+    /**
+     * Assign a paid, unassigned order to the active marketer with the fewest
+     * open orders. Returns the updated order, or null if it wasn't assignable.
+     */
+    static async assignOrder(orderId, { excludeMarketerIds = [] } = {}) {
+        const marketer = await User.findOne({
+            role: 'marketer',
+            isActive: { $ne: false },
+            suspended: { $ne: true },
+            _id: { $nin: excludeMarketerIds }
+        })
+            .sort({ assignedOrdersCount: 1, createdAt: 1 })
+            .select('_id');
 
-            if (availableMarketers.length === 0) {
-                throw new Error('No available marketers to assign');
-            }
+        if (!marketer) {
+            throw new Error('No available marketers to assign');
+        }
 
-            // Get the least busy marketer
-            const marketer = availableMarketers[0];
-            const assignmentExpiresAt = new Date();
-            assignmentExpiresAt.setDate(assignmentExpiresAt.getDate() + 7); // 7 days to deliver
+        return this.assignOrderTo(orderId, marketer._id, 'Automatic assignment');
+    }
 
-            // Update order with marketer assignment (only if it is still unassigned)
-            const updatedOrder = await Order.findOneAndUpdate(
-                // 'assigned' is included for reassignment, which unsets the marketer first
-                { _id: orderId, marketer: null, status: { $in: ['pending', 'processing', 'assigned'] } },
-                {
-                    marketer: marketer._id,
-                    assignedAt: new Date(),
-                    assignmentExpiresAt,
-                    status: 'assigned',
-                    $push: {
-                        previousMarketers: {
-                            marketerId: marketer._id,
-                            assignedAt: new Date(),
-                            reason: 'Initial assignment'
-                        }
+    /** Assign (or reassign) a paid order to a specific marketer. */
+    static async assignOrderTo(orderId, marketerId, reason = 'Assigned by admin') {
+        const assignmentExpiresAt = new Date();
+        assignmentExpiresAt.setDate(assignmentExpiresAt.getDate() + ASSIGNMENT_DAYS);
+        const now = new Date();
+
+        // Only paid orders that are still unassigned. 'assigned' is included
+        // for reassignment, which unsets the marketer first.
+        const updatedOrder = await Order.findOneAndUpdate(
+            { _id: orderId, marketer: null, isPaid: true, status: { $in: ['pending', 'processing', 'assigned'] } },
+            {
+                marketer: marketerId,
+                assignedAt: now,
+                assignmentExpiresAt,
+                status: 'assigned',
+                $push: {
+                    previousMarketers: { marketerId, assignedAt: now, reason },
+                    statusHistory: { status: 'assigned', changedAt: now, note: reason }
+                }
+            },
+            { new: true }
+        );
+
+        if (!updatedOrder) {
+            // Not paid, already assigned, or finished; leave the marketer's count alone
+            return null;
+        }
+
+        await User.updateOne({ _id: marketerId }, { $inc: { assignedOrdersCount: 1 } });
+
+        // TODO: Send notification to marketer about new assignment
+        return updatedOrder;
+    }
+
+    /** Remove the current marketer from an order that hasn't been delivered yet. */
+    static async unassignOrder(order, reason) {
+        if (!order.marketer) return order;
+        const updated = await Order.findOneAndUpdate(
+            { _id: order._id, marketer: order.marketer, status: { $in: ['assigned', 'in_transit'] } },
+            {
+                $push: {
+                    previousMarketers: {
+                        marketerId: order.marketer,
+                        assignedAt: order.assignedAt,
+                        unassignedAt: new Date(),
+                        reason
                     }
                 },
-                { new: true }
+                $unset: { marketer: 1, assignedAt: 1, assignmentExpiresAt: 1 },
+                $set: { status: 'assigned' }
+            },
+            { new: true }
+        );
+        if (updated) {
+            await User.updateOne(
+                { _id: order.marketer, assignedOrdersCount: { $gt: 0 } },
+                { $inc: { assignedOrdersCount: -1 } }
             );
-
-            if (!updatedOrder) {
-                // Order missing or already assigned; don't touch the marketer's count
-                return null;
-            }
-
-            // Increment marketer's assigned orders count
-            await User.findByIdAndUpdate(marketer._id, {
-                $inc: { assignedOrdersCount: 1 }
-            });
-
-            // TODO: Send notification to marketer about new assignment
-
-            return updatedOrder;
-        } catch (error) {
-            console.error('Error assigning order to marketer:', error);
-            throw error;
         }
+        return updated;
     }
 
-    // Reassign order to another marketer after expiration
+    /** Reassign orders whose marketer didn't deliver within the deadline. */
     static async reassignExpiredOrders() {
-        try {
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const expiredOrders = await Order.find({
+            status: 'assigned',
+            marketer: { $ne: null },
+            assignmentExpiresAt: { $lte: new Date() }
+        });
 
-            // Find orders assigned more than 7 days ago and not yet delivered
-            const expiredOrders = await Order.find({
-                status: 'assigned',
-                assignmentExpiresAt: { $lte: new Date() },
-                'deliveryProof': null
-            }).populate('marketer', 'name email');
-
-            for (const order of expiredOrders) {
-                // Record the previous marketer assignment
-                await Order.findByIdAndUpdate(order._id, {
-                    $push: {
-                        previousMarketers: {
-                            marketerId: order.marketer._id,
-                            assignedAt: order.assignedAt,
-                            unassignedAt: new Date(),
-                            reason: 'Assignment expired (7 days)'
-                        }
-                    },
-                    $unset: { marketer: 1, assignedAt: 1, assignmentExpiresAt: 1 }
-                });
-
-                // Decrement previous marketer's assigned orders count
-                await User.findByIdAndUpdate(order.marketer._id, {
-                    $inc: { assignedOrdersCount: -1 }
-                });
-
-                // Reassign to a new marketer
-                await this.assignOrder(order._id);
+        let reassigned = 0;
+        for (const order of expiredOrders) {
+            const previousMarketer = order.marketer;
+            const released = await this.unassignOrder(order, `Assignment expired (${ASSIGNMENT_DAYS} days)`);
+            if (!released) continue;
+            try {
+                // Prefer someone else; fall back to anyone available
+                const result = await this.assignOrder(order._id, { excludeMarketerIds: [previousMarketer] })
+                    .catch(() => this.assignOrder(order._id));
+                if (result) reassigned++;
+            } catch (error) {
+                console.error(`Could not reassign order ${order.orderNumber}:`, error.message);
             }
-
-            return { reassigned: expiredOrders.length };
-        } catch (error) {
-            console.error('Error reassigning expired orders:', error);
-            throw error;
         }
+
+        return { reassigned, expired: expiredOrders.length };
     }
 
-    // Mark order as delivered by marketer
+    /** Paid orders that never got a marketer (e.g. none were available). */
+    static async assignUnassignedPaidOrders() {
+        const orders = await Order.find({ isPaid: true, marketer: null, status: { $in: ['pending', 'processing', 'assigned'] } }).select('_id orderNumber');
+        let assigned = 0;
+        for (const order of orders) {
+            try {
+                if (await this.assignOrder(order._id)) assigned++;
+            } catch (error) {
+                console.error(`Could not assign order ${order.orderNumber}:`, error.message);
+                break; // no marketers available; try again next run
+            }
+        }
+        return { assigned, pending: orders.length };
+    }
+
+    /** Marketer marks an order as delivered. */
     static async markAsDelivered(orderId, marketerId, deliveryProof) {
-        try {
-            const order = await Order.findById(orderId);
-            
-            if (!order) {
-                throw new Error('Order not found');
-            }
+        const order = await Order.findById(orderId);
 
-            if (order.marketer.toString() !== marketerId) {
-                throw new Error('Not authorized to update this order');
-            }
-
-            order.deliveryProof = deliveryProof;
-            order.markedDeliveredAt = new Date();
-            order.status = 'delivered';
-            await order.save();
-
-            // TODO: Send notification to customer to confirm delivery
-
-            return order;
-        } catch (error) {
-            console.error('Error marking order as delivered:', error);
-            throw error;
+        if (!order) {
+            throw new AppError('Order not found', 404);
         }
+
+        if (String(order.marketer) !== String(marketerId)) {
+            throw new AppError('Not authorized to update this order', 403);
+        }
+
+        if (!['assigned', 'in_transit'].includes(order.status)) {
+            throw new AppError(`An order that is ${order.status.replace('_', ' ')} cannot be marked as delivered`, 400);
+        }
+
+        const now = new Date();
+        order.deliveryProof = deliveryProof;
+        order.markedDeliveredAt = now;
+        order.deliveredAt = now;
+        order.status = 'delivered';
+        order.$locals.skipStatusHistory = true;
+        order.statusHistory.push({ status: 'delivered', changedBy: marketerId, note: 'Marked as delivered by marketer' });
+        await order.save();
+
+        // TODO: Send notification to customer to confirm delivery
+        return order;
     }
 
-    // Confirm order delivery by customer
+    /**
+     * Customer confirms they received the order. Completes the order and pays
+     * the buyer's (and referrer's) reward into their wallets, exactly once.
+     */
     static async confirmDelivery(orderId, userId) {
+        if (!mongoose.Types.ObjectId.isValid(String(orderId))) {
+            throw new AppError('Invalid order ID', 400);
+        }
+
+        const session = await mongoose.startSession();
         try {
-            const order = await Order.findOne({
-                _id: orderId,
-                buyer: userId,
-                status: 'delivered',
-                customerConfirmed: false
+            let result;
+            await session.withTransaction(async () => {
+                const order = await Order.findOne({
+                    _id: orderId,
+                    $or: [{ buyer: userId }, { userId }]
+                }).session(session);
+
+                if (!order) {
+                    throw new AppError('Order not found', 404);
+                }
+                if (order.customerConfirmed || order.status === 'completed') {
+                    throw new AppError('You have already confirmed this order', 400);
+                }
+                if (order.status !== 'delivered') {
+                    throw new AppError('You can confirm this order once the marketer has marked it as delivered', 400);
+                }
+
+                const buyer = await User.findById(order.userId || order.buyer).session(session);
+                if (!buyer) {
+                    throw new AppError('Customer account not found', 404);
+                }
+
+                const now = new Date();
+                order.customerConfirmed = true;
+                order.confirmedAt = now;
+                order.completedAt = now;
+                order.status = 'completed';
+                order.$locals.skipStatusHistory = true;
+                order.statusHistory.push({ status: 'completed', changedBy: userId, note: 'Delivery confirmed by customer' });
+
+                const earnings = await releaseOrderEarnings(order, buyer, session);
+                await order.save({ session });
+
+                if (order.marketer) {
+                    await User.updateOne(
+                        { _id: order.marketer },
+                        { $inc: { assignedOrdersCount: -1, completedOrdersCount: 1 } },
+                        { session }
+                    );
+                    // Keep the counter from going negative on old data
+                    await User.updateOne(
+                        { _id: order.marketer, assignedOrdersCount: { $lt: 0 } },
+                        { $set: { assignedOrdersCount: 0 } },
+                        { session }
+                    );
+                }
+
+                result = {
+                    order,
+                    earnings: {
+                        total: earnings.total || 0,
+                        yourShare: earnings.buyerShare || 0,
+                        referrerShare: earnings.referrerShare || 0,
+                        rate: earnings.rate || 0
+                    }
+                };
             });
-
-            if (!order) {
-                throw new Error('Order not found or already confirmed');
-            }
-
-            order.customerConfirmed = true;
-            order.confirmedAt = new Date();
-            order.status = 'completed';
-            
-            // Process commission if not already processed
-            if (!order.commissionReleased) {
-                await CommissionService.processMarketerCommission({
-                    orderId: order._id,
-                    marketerId: order.marketer,
-                    // Commission is earned on goods only (older orders have no subtotal)
-                    amount: (order.subtotal || order.totalAmount) * (order.commissionRate / 100)
-                });
-                order.commissionReleased = true;
-            }
-
-            await order.save();
-
-            // Decrement marketer's assigned orders count
-            await User.findByIdAndUpdate(order.marketer, {
-                $inc: { assignedOrdersCount: -1, completedOrdersCount: 1 }
-            });
-
-            return order;
-        } catch (error) {
-            console.error('Error confirming delivery:', error);
-            throw error;
+            return result;
+        } finally {
+            await session.endSession();
         }
     }
-
-    
-
 }
 
 export default MarketerService;
