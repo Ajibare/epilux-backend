@@ -272,38 +272,43 @@ const markAsDelivered = async (req, res) => {
 
         res.json({
             success: true,
+            message: 'Order marked as delivered. The customer will be asked to confirm.',
             order
         });
     } catch (error) {
-        console.error('Error marking order as delivered:', error);
-        res.status(500).json({
+        const statusCode = error.statusCode || 500;
+        if (statusCode >= 500) console.error('Error marking order as delivered:', error);
+        res.status(statusCode).json({
             success: false,
-            message: 'Error marking order as delivered',
-            error: error.message
+            message: statusCode >= 500 ? 'Error marking order as delivered' : error.message
         });
     }
 };
 
-// Confirm order delivery by customer
+// Confirm order delivery by customer; pays out the buyer's reward
 const confirmDelivery = async (req, res) => {
     try {
-        const { orderId } = req.params;
-        
-        const order = await MarketerService.confirmDelivery(
+        const orderId = req.params.orderId || req.params.id;
+
+        const { order, earnings } = await MarketerService.confirmDelivery(
             orderId,
             req.user.id
         );
 
         res.json({
             success: true,
-            order
+            message: earnings.yourShare > 0
+                ? `Thanks for confirming! ₦${earnings.yourShare.toLocaleString()} has been added to your wallet.`
+                : 'Thanks for confirming your delivery!',
+            order: formatOrderResponse(order),
+            earnings
         });
     } catch (error) {
-        console.error('Error confirming delivery:', error);
-        res.status(500).json({
+        const statusCode = error.statusCode || 500;
+        if (statusCode >= 500) console.error('Error confirming delivery:', error);
+        res.status(statusCode).json({
             success: false,
-            message: 'Error confirming delivery',
-            error: error.message
+            message: statusCode >= 500 ? 'Error confirming delivery. Please try again.' : error.message
         });
     }
 };
@@ -430,6 +435,13 @@ const formatOrderResponse = (order) => {
         rejectedAt: order.rejectedAt,
         cancellationReason: order.cancellationReason,
         rejectionReason: order.rejectionReason,
+        customerConfirmed: order.customerConfirmed,
+        confirmedAt: order.confirmedAt,
+        commissionRate: order.commissionRate,
+        commissionAmount: order.commissionAmount,
+        commissionReleased: order.commissionReleased,
+        referralInfo: order.referralInfo,
+        deliveryProof: order.deliveryProof,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt
     };

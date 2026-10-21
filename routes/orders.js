@@ -71,17 +71,17 @@ router.use(authenticate);
 // Create a new order
 router.post('/', catchAsync(createOrder));
 
-// Mark order as delivered (for marketers)
+// Mark order as delivered (the assigned marketer; checked in the service)
 router.post(
-    '/:orderId/deliver', 
-    authorize('marketer'), 
+    '/:orderId/deliver',
+    authorize('marketer', 'admin'),
     catchAsync(markAsDelivered)
 );
 
-// Confirm order delivery (for customers)
+// Confirm order delivery (the customer who placed it; checked in the service).
+// Any role can buy, so ownership rather than role is what's enforced.
 router.post(
-    '/:orderId/confirm', 
-    authorize('user'), 
+    '/:orderId/confirm',
     catchAsync(confirmDelivery)
 );
 
