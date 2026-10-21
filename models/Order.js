@@ -318,11 +318,12 @@ orderSchema.pre('save', async function(next) {
         // Commission is earned on goods only, never on the delivery fee
         this.commissionAmount = (this.subtotal * this.commissionRate) / 100;
 
-        // Update referral shares if applicable
+        // Projected referral split (paid out when the customer confirms delivery):
+        // referred buyer 60%, referrer 40%
         if (this.referralInfo?.referredBy && this.referralInfo.referralCommissionRate > 0) {
             const totalReferralCommission = (this.subtotal * this.referralInfo.referralCommissionRate) / 100;
-            this.referralInfo.referrerShare = totalReferralCommission * 0.5; // 50% to referrer
-            this.referralInfo.userShare = totalReferralCommission * 0.5; // 50% to user
+            this.referralInfo.referrerShare = Math.round(totalReferralCommission * 0.4 * 100) / 100;
+            this.referralInfo.userShare = Math.round((totalReferralCommission - this.referralInfo.referrerShare) * 100) / 100;
         }
     }
     

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Order from '../models/Order.js';
+import { REFERRAL_SPLIT } from '../config/commissionConfig.js';
 
 class SeasonalPromoService {
     // Define seasonal promotions with date ranges
@@ -66,15 +67,15 @@ class SeasonalPromoService {
                 userShare: commissionBase * (order.commissionRate / 100)
             };
         } else {
-            // 50/50 split between referrer and user
+            // Referred buyer keeps 60%, referrer gets 40% (projected; paid on delivery confirmation)
             const totalCommission = commissionBase * (order.commissionRate / 100);
-            const splitAmount = totalCommission / 2;
-            
+            const referrerShare = Math.round(totalCommission * REFERRAL_SPLIT.REFERRER * 100) / 100;
+
             order.referralInfo = {
                 referredBy: referrerId,
                 referralCommissionRate: order.commissionRate,
-                referrerShare: splitAmount,
-                userShare: splitAmount
+                referrerShare,
+                userShare: Math.round((totalCommission - referrerShare) * 100) / 100
             };
         }
 
