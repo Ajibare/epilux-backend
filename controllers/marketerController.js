@@ -4,6 +4,7 @@ import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import { NotFoundError } from '../middleware/errorHandler.js';
 import OrderService from '../services/orderService.js';
+import MarketerService from '../services/marketerService.js';
 
 /**
  * @desc    Get marketer's assigned products
@@ -144,57 +145,72 @@ export const updateOrderStatus = async (req, res) => {
     try {
         const { status, note } = req.body;
         const { id } = req.params;
-        
-        const order = await Order.findOne({ 
-            _id: id, 
-            marketer: req.user.id 
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid order ID' });
+        }
+
+        const order = await Order.findOne({
+            _id: id,
+            marketer: req.user.id
         });
 
         if (!order) {
             throw new NotFoundError('Order not found or not assigned to you');
         }
 
-        // Validate status transition. 'completed' is set by the customer's
-        // delivery confirmation (which also releases commission), not the marketer.
+        // 'completed' is set by the customer's delivery confirmation (which
+        // also pays their reward), never by the marketer. A marketer who can't
+        // deliver declines the order and it is passed to another marketer;
+        // marketers can't cancel orders customers have paid for.
         const validTransitions = {
-            'assigned': ['in_transit'],
-            'in_transit': ['delivered', 'cancelled']
+            'assigned': ['in_transit', 'delivered', 'declined'],
+            'in_transit': ['delivered', 'declined']
         };
+        const requested = status === 'cancelled' || status === 'rejected' ? 'declined' : status;
 
-        if (!validTransitions[order.status] || !validTransitions[order.status].includes(status)) {
+        if (!validTransitions[order.status] || !validTransitions[order.status].includes(requested)) {
             return res.status(400).json({
                 success: false,
-                message: `Invalid status transition from ${order.status} to ${status}`
+                message: `An order that is ${order.status.replace('_', ' ')} can't be changed to ${String(status).replace('_', ' ')}`
             });
         }
 
-        if (status === 'cancelled') {
-            // Shared path so reserved stock and the marketer's slot are released once
-            const cancelled = await OrderService.updateOrderStatusAsAdmin(order, 'cancelled', req.user.id, note || 'Cancelled by marketer');
+        if (requested === 'delivered') {
+            const delivered = await MarketerService.markAsDelivered(order._id, req.user.id, note || req.body.deliveryProof || 'Delivered');
             return res.status(200).json({
                 success: true,
-                message: 'Order status updated to cancelled',
-                data: cancelled
+                message: 'Order marked as delivered. The customer will be asked to confirm.',
+                data: delivered
             });
         }
 
-        // Update order status
+        if (requested === 'declined') {
+            await MarketerService.unassignOrder(order, note ? `Declined by marketer: ${note}` : 'Declined by marketer');
+            let reassigned = null;
+            try {
+                reassigned = await MarketerService.assignOrder(order._id, { excludeMarketerIds: [req.user._id] });
+            } catch {
+                // No other marketer free right now; admin or the scheduler will assign it
+            }
+            return res.status(200).json({
+                success: true,
+                message: reassigned
+                    ? 'Order declined and passed to another marketer'
+                    : 'Order declined. It will be assigned to another marketer.',
+                data: { orderId: order._id }
+            });
+        }
+
+        // in_transit
         order.status = status;
+        order.inTransitAt = new Date();
+        order.$locals.skipStatusHistory = true;
         order.statusHistory.push({
             status,
             changedBy: req.user.id,
-            note: note || `Status changed to ${status}`
+            note: note || 'Out for delivery'
         });
-
-        if (status === 'in_transit') {
-            order.inTransitAt = new Date();
-        }
-
-        // If order is delivered, set deliveredAt
-        if (status === 'delivered') {
-            order.deliveredAt = new Date();
-            order.markedDeliveredAt = new Date();
-        }
 
         await order.save();
 

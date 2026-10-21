@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import config from '../config/environment.js';
 import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
+import MarketerService from './marketerService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const FLUTTERWAVE_BASE_URL = config.FLUTTERWAVE_BASE_URL;
@@ -180,6 +181,14 @@ class FlutterwaveService {
             await Cart.deleteOne({ user: order.userId }).catch((error) =>
                 console.error('Failed to clear cart after payment:', error.message)
             );
+
+            // Paid: hand the order to a marketer for delivery. If none is free,
+            // the scheduler or an admin assigns it later.
+            try {
+                await MarketerService.assignOrder(order._id);
+            } catch (error) {
+                console.error(`Could not assign paid order ${order.orderNumber}:`, error.message);
+            }
 
             return { ...result, status: 'success' };
         }

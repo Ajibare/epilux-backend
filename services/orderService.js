@@ -2,6 +2,7 @@ import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import User from '../models/User.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { refundWalletPayment } from './earningsService.js';
 
 // Return stock reserved at checkout when an order will never be fulfilled
 const restoreStock = async (order) => {
@@ -85,6 +86,11 @@ class OrderService {
                     { $inc: { assignedOrdersCount: -1 } }
                 );
             }
+            try {
+                await refundWalletPayment(updatedOrder, null, `Order ${newStatus}`);
+            } catch (error) {
+                console.error(`Wallet refund failed for order ${updatedOrder.orderNumber}:`, error.message);
+            }
         }
 
         // TODO: Send notifications based on status change
@@ -114,6 +120,14 @@ class OrderService {
                 { _id: updatedOrder.marketer, assignedOrdersCount: { $gt: 0 } },
                 { $inc: { assignedOrdersCount: -1 } }
             );
+        }
+
+        // Orders paid from the wallet are refunded to the wallet automatically.
+        // Card payments are refunded through the payment provider by an admin.
+        try {
+            await refundWalletPayment(updatedOrder, null, `Order ${newStatus}`);
+        } catch (error) {
+            console.error(`Wallet refund failed for order ${updatedOrder.orderNumber}:`, error.message);
         }
 
         return updatedOrder;

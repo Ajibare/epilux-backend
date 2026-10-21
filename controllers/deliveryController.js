@@ -185,15 +185,9 @@ export const confirmDelivery = async (req, res) => {
             { session }
         );
         
-        // Process commission
-        if (delivery.commissionStatus === 'active') {
-            await CommissionService.processSaleCommission({
-                buyerId: delivery.customer,
-                amount: delivery.order.totalAmount,
-                productId: delivery.order.items[0]?.product, // Assuming first item for commission
-                orderId: delivery.order._id
-            });
-        }
+        // Rewards are paid only through POST /api/orders/:id/confirm
+        // (MarketerService.confirmDelivery), so a single path can credit wallets
+        // and an order can never be paid out twice.
         
         await session.commitTransaction();
         session.endSession();
@@ -203,7 +197,7 @@ export const confirmDelivery = async (req, res) => {
         res.json({
             success: true,
             data: delivery,
-            message: 'Delivery confirmed successfully. Commission has been processed.'
+            message: 'Delivery confirmed successfully.'
         });
         
     } catch (error) {

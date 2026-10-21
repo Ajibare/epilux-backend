@@ -78,7 +78,8 @@ class MarketerService {
                     }
                 },
                 $unset: { marketer: 1, assignedAt: 1, assignmentExpiresAt: 1 },
-                $set: { status: 'assigned' }
+                // Back to the paid-and-waiting state until someone takes it
+                $set: { status: 'processing' }
             },
             { new: true }
         );
