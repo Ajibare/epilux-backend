@@ -205,6 +205,43 @@ const userSchema = new Schema({
 },
 { timestamps: true });
 
+// Role changes are only allowed from the admin role endpoints, which opt in
+// explicitly. Any other code path that tries to change a role is rejected, so a
+// bug elsewhere can never escalate (or demote) an account.
+//   document: user.$locals.allowRoleChange = true; await user.save();
+//   query:    User.updateOne(filter, { role }, { allowRoleChange: true })
+const roleChangeError = () => {
+    const error = new Error('Role changes are only allowed through the admin role management endpoints');
+    error.statusCode = 403;
+    error.isOperational = true;
+    return error;
+};
+
+userSchema.pre('save', function(next) {
+    if (!this.isNew && this.isModified('role') && this.$locals.allowRoleChange !== true) {
+        return next(roleChangeError());
+    }
+    next();
+});
+
+const updateTouchesRole = (update) => {
+    if (!update) return false;
+    if (Array.isArray(update)) return true; // aggregation pipelines can set anything
+    return Object.entries(update).some(([key, value]) =>
+        key === 'role' ||
+        (key.startsWith('$') && value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'role'))
+    );
+};
+
+['findOneAndUpdate', 'updateOne', 'updateMany', 'replaceOne', 'findOneAndReplace'].forEach((op) => {
+    userSchema.pre(op, function(next) {
+        if (updateTouchesRole(this.getUpdate()) && this.getOptions().allowRoleChange !== true) {
+            return next(roleChangeError());
+        }
+        next();
+    });
+});
+
 // Hash password before saving
 userSchema.pre('save', async function(next) {
     if (!this.isModified('password')) return next();

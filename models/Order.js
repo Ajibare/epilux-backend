@@ -206,6 +206,17 @@ const orderSchema = new Schema({
             required: true
         }
     }],
+    // Sum of item price * quantity
+    subtotal: {
+        type: Number,
+        default: 0
+    },
+    deliveryFee: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    // subtotal + deliveryFee; this is the amount charged
     totalAmount: {
         type: Number,
         required: true
@@ -300,15 +311,16 @@ orderSchema.pre('save', async function(next) {
             return item;
         });
 
-        // Calculate order total
-        this.totalAmount = this.items.reduce((sum, item) => sum + item.total, 0);
-        
-        // Calculate commission amount
-        this.commissionAmount = (this.totalAmount * this.commissionRate) / 100;
-        
+        // Calculate order total (goods + delivery)
+        this.subtotal = this.items.reduce((sum, item) => sum + item.total, 0);
+        this.totalAmount = this.subtotal + (this.deliveryFee || 0);
+
+        // Commission is earned on goods only, never on the delivery fee
+        this.commissionAmount = (this.subtotal * this.commissionRate) / 100;
+
         // Update referral shares if applicable
         if (this.referralInfo?.referredBy && this.referralInfo.referralCommissionRate > 0) {
-            const totalReferralCommission = (this.totalAmount * this.referralInfo.referralCommissionRate) / 100;
+            const totalReferralCommission = (this.subtotal * this.referralInfo.referralCommissionRate) / 100;
             this.referralInfo.referrerShare = totalReferralCommission * 0.5; // 50% to referrer
             this.referralInfo.userShare = totalReferralCommission * 0.5; // 50% to user
         }

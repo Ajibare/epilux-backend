@@ -1,42 +1,5 @@
 import Product from '../models/Product.js';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-
-
-// Configure uploads directory based on environment
-const isVercel = process.env.VERCEL === '1';
-const uploadsDir = isVercel 
-    ? '/tmp/uploads'  // Vercel's writable directory
-    : path.join(process.cwd(), 'public', 'uploads');
-
-// Ensure uploads directory exists
-const ensureUploadsDir = () => {
-    try {
-        if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-            console.log(`Created uploads directory at: ${uploadsDir}`);
-        }
-        return uploadsDir;
-    } catch (error) {
-        console.error('Error creating uploads directory:', error);
-        throw error;
-    }
-};
-
-// Initialize uploads directory
-ensureUploadsDir();
-
-// Helper function to generate a unique filename
-const generateUniqueFilename = (originalname) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    return uniqueSuffix + path.extname(originalname);
-};
+import { persistImages, removeImages } from '../utils/imageStorage.js';
 
 // Create new product
 // const createProduct = async (req, res) => {
@@ -171,6 +134,39 @@ const generateUniqueFilename = (originalname) => {
 // };
 
 
+// Multipart form fields arrive as strings; JSON bodies arrive typed.
+const toBoolean = (value) => value === true || value === 'true';
+
+// Accept images as URL strings, {url, ...} objects, or a JSON string of either.
+const parseImageList = (raw) => {
+    if (raw === undefined || raw === null || raw === '') return undefined;
+    let list = raw;
+    if (typeof raw === 'string') {
+        try {
+            list = JSON.parse(raw);
+        } catch {
+            list = [raw];
+        }
+    }
+    if (!Array.isArray(list)) list = [list];
+    return list
+        .map((img) => (typeof img === 'string' ? { url: img } : img))
+        // Blob URLs are browser-local previews and can never be served
+        .filter((img) => img && typeof img.url === 'string' && img.url && !img.url.startsWith('blob:'))
+        .map((img) => ({
+            url: img.url,
+            publicId: img.publicId || undefined,
+            isPrimary: !!img.isPrimary,
+            altText: img.altText || img.alt || undefined
+        }));
+};
+
+const ensureSinglePrimary = (images) => {
+    if (images.length === 0) return images;
+    const primaryIndex = Math.max(0, images.findIndex((img) => img.isPrimary));
+    return images.map((img, index) => ({ ...img, isPrimary: index === primaryIndex }));
+};
+
 const createProduct = async (req, res) => {
     try {
         const {
@@ -179,6 +175,7 @@ const createProduct = async (req, res) => {
             price,
             stock = 0,
             category,
+            brand,
             isFeatured = false,
             discount = 0,
             specifications = {}
@@ -209,44 +206,17 @@ const createProduct = async (req, res) => {
             });
         }
 
-        // Handle file uploads
-        let images = [];
-        
+        // Images: URLs supplied in the body plus any uploaded files
+        let images = parseImageList(req.body.images) || [];
+        let uploaded = [];
         if (req.files && req.files.length > 0) {
-            try {
-                // Ensure uploads directory exists
-                ensureUploadsDir();
-                
-                // Process each uploaded file
-                for (const [index, file] of req.files.entries()) {
-                    const filename = generateUniqueFilename(file.originalname);
-                    const filePath = path.join(uploadsDir, filename);
-                    
-                    // Move the file to the uploads directory
-                    await fs.promises.rename(file.path, filePath);
-                    
-                    // Add file info to images array with full URL
-                    const imageUrl = `/uploads/${filename}`;
-                    images.push({
-                        url: imageUrl,
-                        isPrimary: index === 0,
-                        altText: `Image ${index + 1} of ${name}`,
-                        absoluteUrl: req.protocol + '://' + req.get('host') + imageUrl
-                    });
-                }
-            } catch (error) {
-                console.error('Error processing file uploads:', error);
-                // Don't fail the entire request if there's an image processing error
-                // Continue with empty images array
-            }
-        } else if (req.body.images && Array.isArray(req.body.images)) {
-            // If images are provided as URLs
-            images = req.body.images.map((url, index) => ({
-                url,
-                isPrimary: index === 0,
-                altText: `Image ${index + 1} of ${name}`
-            }));
+            uploaded = await persistImages(req.files);
+            images = images.concat(uploaded.map((img) => ({ ...img, isPrimary: false })));
         }
+        images = ensureSinglePrimary(images).map((img, index) => ({
+            ...img,
+            altText: img.altText || `Image ${index + 1} of ${name}`
+        }));
 
         // Prepare product data
         const productData = {
@@ -255,8 +225,9 @@ const createProduct = async (req, res) => {
             price: priceValue,
             stock: Math.max(0, parseInt(stock, 10) || 0),
             category: category.trim(),
+            brand: typeof brand === 'string' && brand.trim() ? brand.trim() : undefined,
             images,
-            isFeatured: isFeatured === 'true' || isFeatured === true,
+            isFeatured: toBoolean(isFeatured),
             discount: Math.max(0, Math.min(parseFloat(discount) || 0, 100)), // Ensure discount is between 0-100
             specifications: typeof specifications === 'string' ? 
                 JSON.parse(specifications) : 
@@ -267,7 +238,13 @@ const createProduct = async (req, res) => {
 
         // Create and save the product
         const product = new Product(productData);
-        await product.save();
+        try {
+            await product.save();
+        } catch (saveError) {
+            // Don't leave orphaned uploads behind when the product isn't saved
+            await removeImages(uploaded);
+            throw saveError;
+        }
 
         // Send success response
         res.status(201).json({
@@ -400,8 +377,14 @@ const getProducts = async (req, res) => {
 // Get single product with stock and images
 const getProduct = async (req, res) => {
     try {
-        const product = await Product.findById(req.params.id)
-            .select('name description price stock images isActive isFeatured isInStock category brand')
+        // Inactive products are only visible to admins
+        const filter = { _id: req.params.id };
+        if (req.user?.role !== 'admin') {
+            filter.isActive = { $ne: false };
+        }
+
+        const product = await Product.findOne(filter)
+            .select('name description price stock images isActive isFeatured isInStock category brand sku rating ratingCount averageRating numOfReviews reviewsCount createdAt updatedAt')
             .lean();
         
         if (!product) {
@@ -445,21 +428,14 @@ const getProduct = async (req, res) => {
 };
 
 // Update product
+// Accepts JSON or multipart. Unknown fields (e.g. sku) are ignored rather than
+// rejected so older clients keep working. With multipart, `images` (JSON) is the
+// list of existing images to keep and uploaded files are appended to it.
 const updateProduct = async (req, res) => {
+    let uploaded = [];
     try {
-        const updates = Object.keys(req.body);
-        const allowedUpdates = ['name', 'description', 'price', 'stock', 'category', 'images', 'isFeatured', 'specifications'];
-        const isValidOperation = updates.every(update => allowedUpdates.includes(update));
-
-        if (!isValidOperation) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid updates!'
-            });
-        }
-
         const product = await Product.findById(req.params.id);
-        
+
         if (!product) {
             return res.status(404).json({
                 success: false,
@@ -467,21 +443,79 @@ const updateProduct = async (req, res) => {
             });
         }
 
-        updates.forEach(update => product[update] = req.body[update]);
+        const body = req.body || {};
+
+        ['name', 'description', 'category', 'brand'].forEach((field) => {
+            if (typeof body[field] === 'string') product[field] = body[field].trim();
+        });
+
+        if (body.price !== undefined && body.price !== '') {
+            const price = parseFloat(body.price);
+            if (isNaN(price) || price < 0) {
+                return res.status(400).json({ success: false, message: 'Price must be a valid positive number', field: 'price' });
+            }
+            product.price = price;
+        }
+
+        // `inventory.quantity` is accepted for older clients
+        const rawStock = body.stock ?? body.inventory?.quantity;
+        if (rawStock !== undefined && rawStock !== '') {
+            const stock = parseInt(rawStock, 10);
+            if (isNaN(stock) || stock < 0) {
+                return res.status(400).json({ success: false, message: 'Stock must be a non-negative integer', field: 'stock' });
+            }
+            product.stock = stock;
+        }
+
+        if (body.isFeatured !== undefined) product.isFeatured = toBoolean(body.isFeatured);
+        if (body.isActive !== undefined) product.isActive = toBoolean(body.isActive);
+
+        if (body.specifications !== undefined) {
+            product.specifications = typeof body.specifications === 'string'
+                ? JSON.parse(body.specifications)
+                : body.specifications;
+        }
+
+        const keptImages = parseImageList(body.images);
+        if (req.files && req.files.length > 0) {
+            uploaded = await persistImages(req.files);
+        }
+
+        let removedImages = [];
+        if (keptImages !== undefined || uploaded.length > 0) {
+            const nextImages = ensureSinglePrimary([
+                ...(keptImages ?? product.images.map((img) => img.toObject())),
+                ...uploaded.map((img) => ({ ...img, isPrimary: false }))
+            ]).map((img, index) => ({
+                ...img,
+                altText: img.altText || `Image ${index + 1} of ${product.name}`
+            }));
+
+            const nextUrls = new Set(nextImages.map((img) => img.url));
+            removedImages = product.images.filter((img) => !nextUrls.has(img.url));
+            product.images = nextImages;
+        }
+
+        product.isInStock = product.stock > 0;
         product.updatedAt = new Date();
-        
+
         await product.save();
+        // Only delete files after the new state is safely persisted
+        await removeImages(removedImages);
 
         res.json({
             success: true,
-            product
+            message: 'Product updated successfully',
+            product,
+            data: product
         });
     } catch (error) {
+        await removeImages(uploaded);
         console.error('Error updating product:', error);
         res.status(400).json({
             success: false,
-            message: 'Error updating product',
-            error: error.message
+            message: error.name === 'SyntaxError' ? 'Invalid JSON in request' : 'Error updating product',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };
@@ -490,7 +524,7 @@ const updateProduct = async (req, res) => {
 const deleteProduct = async (req, res) => {
     try {
         const product = await Product.findByIdAndDelete(req.params.id);
-        
+
         if (!product) {
             return res.status(404).json({
                 success: false,
@@ -498,7 +532,9 @@ const deleteProduct = async (req, res) => {
             });
         }
 
-        // TODO: Handle related data cleanup (order items, etc.)
+        await removeImages(product.images);
+        // Note: existing orders keep the item price but their product reference
+        // will no longer populate, so order views must tolerate a missing product.
 
         res.json({
             success: true,

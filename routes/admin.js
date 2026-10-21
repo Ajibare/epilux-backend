@@ -28,18 +28,19 @@ router.route('/products')
   .get(authenticate, authorize(ROLES.ADMIN), productController.getProducts)
   .post(authenticate, authorize(ROLES.ADMIN), uploadProductImages, productController.createProduct);
 
+// Static paths must be declared before '/:id' or they are captured as an id
+router.get('/products/categories', authenticate, authorize(ROLES.ADMIN), productController.getCategories);
+
 router.route('/products/:id')
   .get(authenticate, authorize(ROLES.ADMIN), productController.getProduct)
   .put(authenticate, authorize(ROLES.ADMIN), uploadProductImages, productController.updateProduct)
   .delete(authenticate, authorize(ROLES.ADMIN), productController.deleteProduct);
 
-router.get('/products/categories', authenticate, authorize(ROLES.ADMIN), productController.getCategories);
-
 // Order management routes
 router.get('/orders', authenticate, authorize(ROLES.ADMIN), orderController.getOrders);
+router.get('/orders/stats', authenticate, authorize(ROLES.ADMIN), orderController.getOrderStats);
 router.get('/orders/:id', authenticate, authorize(ROLES.ADMIN), orderController.getOrder);
 router.put('/orders/:id/status', authenticate, authorize(ROLES.ADMIN), orderController.updateOrderStatus);
-router.get('/orders/stats', authenticate, authorize(ROLES.ADMIN), orderController.getOrderStats);
 
 // Affiliate management routes
 router.get('/affiliates', authenticate, authorize(ROLES.ADMIN), adminController.getAffiliates);

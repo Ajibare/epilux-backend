@@ -22,24 +22,15 @@ const router = express.Router();
 
 // Register new user
 router.post('/register', validateRegistration, handleValidationErrors, async (req, res) => {
-    console.log('=== NEW REGISTRATION REQUEST ===');
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    let session = null;
 
-     const session = await User.startSession();
-    session.startTransaction();
-    
     try {
-        const { email, password, firstName, lastName, phone, role = 'user', referralCode } = req.body;
-        
-        console.log('Validating request data...');
+        // Public sign-up always creates a regular user. Elevated roles are only
+        // granted by an admin (POST /api/auth/admin/users or PUT /api/admin/users/:id/role).
+        const { email, password, firstName, lastName, phone, referralCode } = req.body;
+        const role = 'user';
+
         if (!email || !password || !firstName || !lastName || !phone) {
-            console.error('Missing required fields:', { 
-                email: !!email, 
-                password: !!password, 
-                firstName: !!firstName, 
-                lastName: !!lastName,
-                phone: !!phone
-            });
             return res.status(400).json({
                 success: false,
                 message: 'Missing required fields',
@@ -61,46 +52,36 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
         }
 
         // Check if user already exists
-        console.log('Checking for existing user with email:', email);
-        try {
-            const existingUser = await User.findOne({ email }).exec();
-            if (existingUser) {
-                console.log('❌ Registration failed: User already exists', { 
-                    email,
-                    userId: existingUser._id,
-                    createdAt: existingUser.createdAt 
-                });
-                return res.status(409).json({
-                    success: false,
-                    message: 'User with this email already exists',
-                    error: 'EMAIL_EXISTS'
-                });
-            }
-        } catch (dbError) {
-            console.error('❌ Database error while checking for existing user:', {
-                name: dbError.name,
-                message: dbError.message,
-                code: dbError.code,
-                codeName: dbError.codeName,
-                stack: dbError.stack
+        const existingUser = await User.findOne({ email }).exec();
+        if (existingUser) {
+            return res.status(409).json({
+                success: false,
+                message: 'User with this email already exists',
+                error: 'EMAIL_EXISTS'
             });
-            throw dbError;
         }
 
-
-        // Find referring user if referral code is provided
+        // Find referring user if referral code is provided. Referral links use the
+        // user's referralCode; affiliates may also share their affiliateCode.
         let referringUser = null;
-        if (referralCode) {
-            referringUser = await User.findOne({ 'affiliateInfo.affiliateCode': referralCode }).session(session);
+        const code = typeof referralCode === 'string' ? referralCode.trim() : '';
+        if (code) {
+            referringUser = await User.findOne({
+                $or: [
+                    { referralCode: code.toUpperCase() },
+                    { 'affiliateInfo.affiliateCode': code }
+                ]
+            });
             if (!referringUser) {
-                await session.abortTransaction();
-                session.endSession();
                 return res.status(400).json({
                     success: false,
                     message: 'Invalid referral code'
                 });
             }
         }
+
+        session = await User.startSession();
+        session.startTransaction();
 
         // Find an available marketer (affiliate with the least number of assigned users)
         const marketer = await User.findOne({ role: 'affiliate' })
@@ -124,26 +105,11 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
 
         // Add referral info if applicable
         if (referringUser) {
-            userData.referredBy = referringUser._id;
+            userData.referredBy = { user: referringUser._id, date: new Date() };
         }
-
-        console.log('Creating new user:', { 
-            email, 
-            firstName, 
-            lastName, 
-            role,
-            phone: phone.trim(),
-            marketerAssigned: !!marketer,
-            referredBy: referringUser?._id
-        });
 
         const user = new User(userData);
         await user.save({ session });
-        console.log('✅ User saved successfully:', { 
-            userId: user._id,
-            email: user.email,
-            role: user.role
-        });
 
         // Update marketer's assigned users count if a marketer was assigned
         if (marketer) {
@@ -154,44 +120,57 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
             );
         }
 
-        // Update referring user's stats if applicable
+        // Update referring user's referral list and stats if applicable
         if (referringUser) {
             await User.findByIdAndUpdate(
                 referringUser._id,
-                { $inc: { 'stats.totalReferredUsers': 1 } },
+                {
+                    $push: { referrals: { user: user._id, date: new Date(), status: 'pending' } },
+                    $inc: { 'stats.totalReferrals': 1 }
+                },
                 { session }
             );
         }
 
         await session.commitTransaction();
-        session.endSession();
 
-        // Generate JWT token
-        console.log('Generating JWT token...');
         const token = generateToken(user._id, user.role);
-        
-        console.log('✅ Registration successful, sending response...');
+        const baseUrl = process.env.FRONTEND_URL || 'https://epilux48.vercel.app';
+        const userResponse = {
+            id: user._id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role,
+            emailVerified: user.emailVerified,
+            referralCode: user.referralCode,
+            referralLink: `${baseUrl}/register?ref=${user.referralCode}`,
+            profile: user.profile,
+            createdAt: user.createdAt
+        };
+
+        // token/user are returned at the top level (like /login) and under
+        // `data` for clients written against the original response shape.
         return res.status(201).json({
             success: true,
             message: 'User registered successfully',
+            token,
+            user: userResponse,
             data: {
-                user: {
-                    id: user._id,
-                    email: user.email,
-                    firstName: user.firstName,
-                    lastName: user.lastName,
-                    role: user.role
-                },
+                user: userResponse,
                 token
             }
         });
     } catch (saveError) {
-        console.error('❌ Error saving user:', {
+        if (session?.inTransaction()) {
+            await session.abortTransaction().catch(() => {});
+        }
+
+        console.error('Registration error:', {
             name: saveError.name,
             message: saveError.message,
             code: saveError.code,
-            keyPattern: saveError.keyPattern,
-            stack: saveError.stack
+            keyPattern: saveError.keyPattern
         });
 
         // Handle duplicate key error (unique constraint violation)
@@ -200,8 +179,7 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
                 success: false,
                 message: 'A user with this email already exists',
                 error: 'DUPLICATE_EMAIL',
-                field: Object.keys(saveError.keyPattern)[0],
-                value: saveError.keyValue.email
+                field: Object.keys(saveError.keyPattern || {})[0]
             });
         }
 
@@ -219,18 +197,6 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
             });
         }
 
-        // Default error response
-        console.error('❌ Unhandled error in registration route:', {
-            name: saveError.name,
-            message: saveError.message,
-            code: saveError.code,
-            codeName: saveError.codeName,
-            stack: saveError.stack,
-            ...(saveError.keyPattern && { keyPattern: saveError.keyPattern }),
-            ...(saveError.keyValue && { keyValue: saveError.keyValue }),
-            ...(saveError.errors && { errors: saveError.errors })
-        });
-        
         // Prepare error response
         const errorResponse = {
             success: false,
@@ -250,7 +216,9 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
         
         res.status(500).json(errorResponse);
     } finally {
-        console.log('=== REGISTRATION REQUEST COMPLETED ===\n');
+        if (session) {
+            await session.endSession();
+        }
     }
 });
 
@@ -285,7 +253,14 @@ router.post('/login', [
             });
         }
 
-        // Update last login
+        if (user.suspended === true) {
+            return res.status(403).json({
+                success: false,
+                message: 'Your account has been suspended. Please contact support.'
+            });
+        }
+
+        // Update last login (save() also back-fills a referralCode for older accounts)
         user.lastLogin = new Date();
         await user.save();
 
@@ -447,8 +422,8 @@ router.get('/profile', async (req, res) => {
         }
 
         const decoded = verifyToken(token);
-        
-        const user = await User.findById(decoded.id).select('-password');
+
+        const user = await User.findById(decoded.userId || decoded.id).select('-password');
         
         if (!user) {
             return res.status(404).json({
@@ -673,7 +648,9 @@ router.post('/forgot-password', validateForgotPassword, handleValidationErrors, 
 // Reset password - verify token and update password
 router.post('/reset-password', validateResetPassword, handleValidationErrors, async (req, res) => {
     try {
-        const { token, newPassword } = req.body;
+        // The validator requires `password`; `newPassword` is accepted for older clients
+        const { token } = req.body;
+        const newPassword = req.body.password || req.body.newPassword;
 
         // Find valid reset token
         const resetToken = await PasswordResetToken.findValidToken(token);
@@ -865,8 +842,20 @@ router.patch('/admin/users/:userId/role', authenticate, [
             });
         }
 
-        // Update user role
+        // Admins' roles can't be changed through the API
+        if (user.role === 'admin') {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(403).json({
+                success: false,
+                message: 'Cannot change another admin user\'s role',
+                error: 'ADMIN_ROLE_CHANGE_NOT_ALLOWED'
+            });
+        }
+
+        // Update user role (admin-only endpoint, checks above)
         user.role = role;
+        user.$locals.allowRoleChange = true;
         await user.save({ session });
         await session.commitTransaction();
         session.endSession();

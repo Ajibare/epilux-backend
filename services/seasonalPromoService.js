@@ -54,17 +54,20 @@ class SeasonalPromoService {
         const order = await Order.findById(orderId);
         if (!order) return null;
 
+        // Commission is earned on goods only (older orders have no subtotal)
+        const commissionBase = order.subtotal || order.totalAmount;
+
         // If no referrer, use default commission
         if (!referrerId) {
             order.referralInfo = {
                 referredBy: null,
                 referralCommissionRate: order.commissionRate,
                 referrerShare: 0,
-                userShare: order.totalAmount * (order.commissionRate / 100)
+                userShare: commissionBase * (order.commissionRate / 100)
             };
         } else {
             // 50/50 split between referrer and user
-            const totalCommission = order.totalAmount * (order.commissionRate / 100);
+            const totalCommission = commissionBase * (order.commissionRate / 100);
             const splitAmount = totalCommission / 2;
             
             order.referralInfo = {

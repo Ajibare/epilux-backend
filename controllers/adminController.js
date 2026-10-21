@@ -629,7 +629,16 @@ const updateUser = async (req, res) => {
     user.firstName = firstName || user.firstName;
     user.lastName = lastName || user.lastName;
     user.email = email || user.email;
-    if (role) user.role = role;
+    if (role && role !== user.role) {
+      if (!['user', 'admin', 'affiliate', 'marketer'].includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid role. Must be one of: user, admin, affiliate, marketer'
+        });
+      }
+      user.role = role;
+      user.$locals.allowRoleChange = true; // admin-only endpoint, checks above
+    }
     if (isActive !== undefined) user.isActive = isActive;
 
     await user.save();
@@ -1128,14 +1137,11 @@ const createUser = async (req, res) => {
       });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create new user
+    // The User model's pre-save hook hashes the password; hashing it here as
+    // well would make the account impossible to log in to.
     const newUser = new User({
       email,
-      password: hashedPassword,
+      password,
       firstName,
       lastName,
       role,
@@ -1218,12 +1224,17 @@ export const updateUserRole = async (req, res) => {
         }
 
         user.role = role;
+        user.$locals.allowRoleChange = true; // admin-only endpoint, checks above
         await user.save();
+
+        const userResponse = user.toObject();
+        delete userResponse.password;
+        delete userResponse.__v;
 
         res.status(200).json({
             success: true,
             message: 'User role updated successfully',
-            data: user
+            data: userResponse
         });
     } catch (error) {
         console.error('Update user role error:', error);

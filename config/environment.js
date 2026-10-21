@@ -1,7 +1,10 @@
 import dotenv from 'dotenv';
 
-// Load environment variables from .env file
-dotenv.config();
+// Load local overrides first (gitignored, never deployed), then .env.
+// dotenv never overwrites a variable that is already set, so values in
+// .env.local win locally and Vercel dashboard variables win in production.
+dotenv.config({ path: '.env.local', quiet: true });
+dotenv.config({ quiet: true });
 
 // Base configuration
 const config = {
@@ -92,7 +95,7 @@ if (!config.FLUTTERWAVE_PUBLIC_KEY) {
 // Logging mode info
 if (config.NODE_ENV === 'development') {
   console.log('🧩 Running in development mode');
-  console.log('MongoDB URI:', config.MONGODB_URI);
+  console.log('MongoDB URI:', config.MONGODB_URI ? config.MONGODB_URI.replace(/\/\/([^@]+)@/, '//***:***@') : 'Missing!');
   console.log('Server Port:', config.PORT);
 } else if (config.NODE_ENV === 'production') {
   console.log(`🚀 ${config.APP_NAME} running in production mode`);

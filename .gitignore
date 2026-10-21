@@ -1,0 +1,8 @@
+# Local-only environment overrides (never commit)
+.env.local
+.env.*.local
+
+# Local runtime artifacts
+logs/
+public/uploads/
+temp-uploads/

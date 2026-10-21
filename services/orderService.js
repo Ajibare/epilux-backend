@@ -1,5 +1,23 @@
 import Order from '../models/Order.js';
+import Product from '../models/Product.js';
+import User from '../models/User.js';
 import { AppError } from '../middleware/errorHandler.js';
+
+// Return stock reserved at checkout when an order will never be fulfilled
+const restoreStock = async (order) => {
+    await Promise.all((order.items || []).map(async (item) => {
+        const productId = item.product?._id || item.product;
+        if (!productId) return;
+        try {
+            await Product.updateOne(
+                { _id: productId },
+                { $inc: { stock: item.quantity }, $set: { isInStock: true } }
+            );
+        } catch (error) {
+            console.error(`Failed to restore stock for product ${productId}:`, error.message);
+        }
+    }));
+};
 
 class OrderService {
     // Update order status with validation and history tracking
@@ -47,14 +65,57 @@ class OrderService {
             statusUpdate[`${newStatus}At`] = new Date();
         }
 
-        const updatedOrder = await Order.findByIdAndUpdate(
-            orderId,
+        // Conditional on the status we validated against, so two concurrent
+        // cancellations can't both succeed and restore stock twice
+        const updatedOrder = await Order.findOneAndUpdate(
+            { _id: orderId, status: order.status },
             statusUpdate,
             { new: true }
         );
 
+        if (!updatedOrder) {
+            throw new AppError('Order was updated by someone else. Please refresh and try again.', 409);
+        }
+
+        if (newStatus === 'cancelled' || newStatus === 'rejected') {
+            await restoreStock(updatedOrder);
+            if (updatedOrder.marketer) {
+                await User.updateOne(
+                    { _id: updatedOrder.marketer, assignedOrdersCount: { $gt: 0 } },
+                    { $inc: { assignedOrdersCount: -1 } }
+                );
+            }
+        }
+
         // TODO: Send notifications based on status change
         
+        return updatedOrder;
+    }
+
+    // Admin cancellation/rejection from any non-terminal status
+    static async updateOrderStatusAsAdmin(order, newStatus, userId, note = '') {
+        const updatedOrder = await Order.findOneAndUpdate(
+            { _id: order._id, status: order.status },
+            {
+                status: newStatus,
+                [`${newStatus}At`]: new Date(),
+                $push: { statusHistory: { status: newStatus, changedBy: userId, note: note || `Order ${newStatus} by admin` } }
+            },
+            { new: true }
+        );
+
+        if (!updatedOrder) {
+            throw new AppError('Order was updated by someone else. Please refresh and try again.', 409);
+        }
+
+        await restoreStock(updatedOrder);
+        if (updatedOrder.marketer) {
+            await User.updateOne(
+                { _id: updatedOrder.marketer, assignedOrdersCount: { $gt: 0 } },
+                { $inc: { assignedOrdersCount: -1 } }
+            );
+        }
+
         return updatedOrder;
     }
 
@@ -89,6 +150,11 @@ class OrderService {
 
         if (!order) {
             throw new AppError('Order cannot be cancelled', 400);
+        }
+
+        // Paid orders need a refund, which has to go through support
+        if (order.isPaid) {
+            throw new AppError('This order has already been paid. Please contact support to cancel it and arrange a refund.', 400);
         }
 
         return this.updateOrderStatus(
@@ -143,7 +209,7 @@ class OrderService {
             .populate('userId', 'firstName lastName email phone')
             .populate('buyer', 'firstName lastName email phone')
             .populate('marketer', 'firstName lastName phone')
-            .populate('items.product', 'name price');
+            .populate('items.product', 'name price images category');
 
         if (!order) {
             throw new AppError('Order not found', 404);
@@ -167,7 +233,7 @@ class OrderService {
 
         return Order.find(query)
             .sort({ createdAt: -1 })
-            .populate('items.product', 'name price image')
+            .populate('items.product', 'name price images category')
             .select('-statusHistory -__v');
     }
 }

@@ -148,9 +148,10 @@ const handleValidationErrors = (req, res, next) => {
     if (!errors.isEmpty()) {
         return res.status(400).json({
             success: false,
-            message: 'Validation failed',
+            // Surface the first problem so clients showing `message` are actionable
+            message: errors.array()[0]?.msg || 'Validation failed',
             errors: errors.array().map(err => ({
-                field: err.param,
+                field: err.path || err.param,
                 message: err.msg
             }))
         });

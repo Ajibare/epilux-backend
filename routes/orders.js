@@ -13,8 +13,9 @@ import {
 import { 
     createOrder, 
     getOrders, 
-    getOrder, 
-    updateOrderStatus, 
+    getOrder,
+    getOrderDetails,
+    updateOrderStatus,
     deleteOrder, 
     getUserOrders, 
     getOrderStats,
@@ -93,8 +94,8 @@ router.get('/stats', authorize('admin'), catchAsync(getOrderStats));
 // Get orders for current user
 router.get('/my-orders', catchAsync(getUserOrders));
 
-// Get single order
-router.get('/:id', catchAsync(getOrder));
+// Get single order (owner, assigned marketer, or admin only)
+router.get('/:id', catchAsync(getOrderDetails));
 
 // Cancel order (user only)
 router.patch('/:id/cancel', catchAsync(cancelOrder));

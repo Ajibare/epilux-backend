@@ -8,9 +8,9 @@ export const getAffiliateProfile = async (req, res) => {
     try {
         // First, ensure the user exists and is an affiliate
         const user = await User.findById(req.user.id)
-            .select('firstName lastName email role referralCode totalEarnings availableBalance isAffiliate')
-            .populate('referrals', 'firstName lastName email createdAt');
-            
+            .select('firstName lastName email role referralCode affiliateInfo referrals')
+            .populate('referrals.user', 'firstName lastName email createdAt');
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -18,32 +18,24 @@ export const getAffiliateProfile = async (req, res) => {
             });
         }
 
-        // Initialize user as affiliate if not already
-        if (user.role !== 'affiliate') {
-            user.role = 'affiliate';
-            user.isAffiliate = true;
-        }
+        // Viewing the affiliate dashboard never changes a user's role; roles are
+        // only changed by an admin.
 
         // Generate referral code if not exists
         if (!user.referralCode) {
             user.referralCode = generateReferralCode();
+            await user.save();
         }
-
-        // Set default values if they don't exist
-        if (user.totalEarnings === undefined) user.totalEarnings = 0;
-        if (user.availableBalance === undefined) user.availableBalance = 0;
-        
-        await user.save();
 
         // Get total referrals count
         let totalReferrals = 0;
         let activeReferrals = 0;
         
         try {
-            totalReferrals = await User.countDocuments({ referredBy: user._id });
-            activeReferrals = await User.countDocuments({ 
-                referredBy: user._id,
-                isActive: true 
+            totalReferrals = await User.countDocuments({ 'referredBy.user': user._id });
+            activeReferrals = await User.countDocuments({
+                'referredBy.user': user._id,
+                isActive: true
             });
         } catch (error) {
             console.error('Error counting referrals:', error);
@@ -120,7 +112,7 @@ export const getAffiliateProfile = async (req, res) => {
                 activeReferrals,
                 totalEarned: commissionData.totalEarned || 0,
                 pendingAmount: commissionData.pendingAmount || 0,
-                availableBalance: user.availableBalance || 0,
+                availableBalance: user.affiliateInfo?.availableBalance || 0,
                 totalWithdrawn: withdrawalData.completedWithdrawals || 0,
                 pendingWithdrawals: withdrawalData.pendingWithdrawals || 0,
                 referralLink: `${process.env.FRONTEND_URL || 'https://your-frontend-url.com'}/register?ref=${user.referralCode}`

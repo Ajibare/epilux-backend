@@ -29,37 +29,22 @@ const verifyToken = (token) => {
 };
 
 // Authentication middleware
-const authenticate = async (req, res, next) => {       
+const authenticate = async (req, res, next) => {
     try {
         const authHeader = req.header('Authorization');
-        const token = authHeader?.replace('Bearer ', '');                                    
-        console.log('Auth middleware - Full Authorization header:', authHeader ? authHeader.substring(0, 50) + '...' : 'undefined');
-        console.log('Auth middleware - Token received:', token ? token.substring(0, 20) + '...' : 'undefined');                                                             
-        console.log('Auth middleware - JWT_SECRET length:', JWT_SECRET ? JWT_SECRET.length : 'undefined');    
-        
+        const token = authHeader?.replace('Bearer ', '');
+
         if (!token) {
-            console.log('Auth middleware - No token provided');
             return res.status(401).json({
                 success: false,
-                message: 'Access denied. No token provided.'                                                              });
+                message: 'Access denied. No token provided.'
+            });
         }
 
         let decoded;
         try {
             decoded = verifyToken(token);
-            console.log('Auth middleware - Decoded token:', decoded);                                             
-            console.log('Auth middleware - Token structure:', {
-                hasUserId: !!decoded.userId,
-                hasId: !!decoded.id,
-                hasSub: !!decoded.sub,
-                keys: Object.keys(decoded)
-            });
-            
-            // Support different field names for user ID
-            const userId = decoded.userId || decoded.id || decoded.sub;
-            console.log('Auth middleware - Looking for user with ID:', userId);                                             
         } catch (tokenError) {
-            console.log('Auth middleware - Token verification failed:', tokenError.message);
             if (tokenError.name === 'JsonWebTokenError') {
                 return res.status(401).json({
                     success: false,
@@ -76,38 +61,30 @@ const authenticate = async (req, res, next) => {
                 success: false,
                 message: 'Token verification failed.'
             });
-        }                                             
-        
-        const userId = decoded.userId || decoded.id || decoded.sub;
-        const user = await User.findById(userId).select('-password');                                        
-        console.log('Auth middleware - Found user:', user ? { id: user._id, email: user.email, role: user.role } : 'not found');                        
-        
-        // Test: Try to find any user to verify User model works
-        try {
-            const anyUser = await User.findOne().select('-password');
-            console.log('Auth middleware - Test: Found any user:', anyUser ? { id: anyUser._id, email: anyUser.email } : 'no users found');
-        } catch (dbError) {
-            console.log('Auth middleware - Test: Database error:', dbError.message);
-        }                        
-        
-        if (!user) {
-            console.log('Auth middleware - User not found in database');
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid token. User not found.'                                                                 });
         }
 
-        console.log('Auth middleware - Authentication successful, setting req.user');
-        console.log('Auth middleware - User object being set:', {
-            _id: user._id,
-            email: user.email,
-            role: user.role
-        });
+        // Support different field names for user ID
+        const userId = decoded.userId || decoded.id || decoded.sub;
+        const user = await User.findById(userId).select('-password');
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid token. User not found.'
+            });
+        }
+
+        if (user.suspended === true) {
+            return res.status(403).json({
+                success: false,
+                message: 'Your account has been suspended. Please contact support.'
+            });
+        }
+
         req.user = user;
-        console.log('Auth middleware - req.user after setting:', req.user ? { _id: req.user._id, email: req.user.email } : 'NULL');
         next();
     } catch (error) {
-        console.log('Auth middleware - Error:', error.message);                                                      
+        console.error('Auth middleware error:', error.message);
         if (error.name === 'JsonWebTokenError') {      
             return res.status(401).json({
                 success: false,
@@ -194,7 +171,7 @@ const optionalAuth = async (req, res, next) => {
         
         if (token) {
             const decoded = verifyToken(token);
-            const user = await User.findById(decoded.userId).select('-password');
+            const user = await User.findById(decoded.userId || decoded.id || decoded.sub).select('-password');
             
             if (user) {
                 req.user = user;

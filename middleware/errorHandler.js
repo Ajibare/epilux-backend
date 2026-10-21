@@ -56,9 +56,8 @@ const handleMongooseError = (error) => {
     }
     
     if (error.code === 11000) {
-        const field = Object.keys(error.keyValue)[0];
-        const value = Object.values(error.keyValue)[0];
-        return new AppError(`Duplicate field value: ${field} with value: ${value}. Please use another value.`, 400);
+        const field = Object.keys(error.keyValue || {})[0] || 'field';
+        return new AppError(`That ${field} is already in use. Please use another value.`, 409);
     }
     
     return new DatabaseError(error.message);
@@ -159,8 +158,11 @@ const globalErrorHandler = (err, req, res, next) => {
     err.status = err.status || 'error';
     
     // Handle specific error types
+    // name/message/stack live on the prototype or are non-enumerable, so copy them explicitly
     let error = { ...err };
+    error.name = err.name;
     error.message = err.message;
+    error.stack = err.stack;
     
     if (error.name === 'ValidationError' || error.name === 'CastError' || error.code === 11000) {
         error = handleMongooseError(error);

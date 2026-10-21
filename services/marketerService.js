@@ -22,9 +22,10 @@ class MarketerService {
             const assignmentExpiresAt = new Date();
             assignmentExpiresAt.setDate(assignmentExpiresAt.getDate() + 7); // 7 days to deliver
 
-            // Update order with marketer assignment
-            const updatedOrder = await Order.findByIdAndUpdate(
-                orderId,
+            // Update order with marketer assignment (only if it is still unassigned)
+            const updatedOrder = await Order.findOneAndUpdate(
+                // 'assigned' is included for reassignment, which unsets the marketer first
+                { _id: orderId, marketer: null, status: { $in: ['pending', 'processing', 'assigned'] } },
                 {
                     marketer: marketer._id,
                     assignedAt: new Date(),
@@ -40,6 +41,11 @@ class MarketerService {
                 },
                 { new: true }
             );
+
+            if (!updatedOrder) {
+                // Order missing or already assigned; don't touch the marketer's count
+                return null;
+            }
 
             // Increment marketer's assigned orders count
             await User.findByIdAndUpdate(marketer._id, {
@@ -148,7 +154,8 @@ class MarketerService {
                 await CommissionService.processMarketerCommission({
                     orderId: order._id,
                     marketerId: order.marketer,
-                    amount: order.totalAmount * (order.commissionRate / 100)
+                    // Commission is earned on goods only (older orders have no subtotal)
+                    amount: (order.subtotal || order.totalAmount) * (order.commissionRate / 100)
                 });
                 order.commissionReleased = true;
             }

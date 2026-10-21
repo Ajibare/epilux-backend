@@ -26,8 +26,10 @@ const allowedOrigins = [
   'https://epilux.com.ng', // Added non-www version
   'https://epilux48.vercel.app',
   'http://localhost:3000',
+  'http://localhost:3001',
   'http://localhost:5173',
   'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
   'http://127.0.0.1:5173'
 ];
 
@@ -254,6 +256,7 @@ import testAuthRoutes from './routes/testAuth.js';
 import walletRoutes from './routes/wallet.js';
 import paymentRoutes from './routes/payment.js';
 import flutterwaveRoutes from './routes/flutterwave.js';
+import ratingRoutes from './routes/ratingRoutes.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
@@ -273,9 +276,13 @@ app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/commission/admin', commissionAdminRoutes);
 app.use('/api/marketer', marketerRoutes);
 app.use('/api/withdrawals', withdrawalRoutes);
-// Removed duplicate delivery route
+// Ratings span several prefixes (/api/products/:id/ratings, /api/users/me/ratings,
+// /api/orders/:orderId/products/:productId/rate), so mount it last at /api.
+app.use('/api', ratingRoutes);
 
-setupScheduledTasks();
+if (process.env.DISABLE_SCHEDULER !== 'true') {
+  setupScheduledTasks();
+}
 
 // ✅ Basic route
 app.get('/', (req, res) => {
@@ -298,6 +305,14 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
+});
+
+// Unknown API routes return JSON instead of Express's default HTML page
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`
   });
 });
 

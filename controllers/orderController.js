@@ -10,70 +10,88 @@ import OrderService from '../services/orderService.js';
 import RatingService from '../services/ratingService.js';
 import ProductRating from '../models/ProductRating.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { calculateDeliveryFee } from '../utils/orderPricing.js';
+
+const ALLOWED_PAYMENT_METHODS = ['card', 'bank_transfer', 'cash_on_delivery', 'wallet', 'flutterwave'];
 
 // Create new order
+// Prices and totals are always computed from the database. Client-supplied
+// prices/totals are ignored so they can never be used to underpay.
 const createOrder = async (req, res) => {
+    const { items, shippingAddress, paymentMethod } = req.body || {};
+
+    // Validate request body structure before opening a transaction
+    if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ success: false, message: 'Items array is required and cannot be empty' });
+    }
+
+    if (!shippingAddress || typeof shippingAddress !== 'object') {
+        return res.status(400).json({ success: false, message: 'Shipping address is required and must be an object' });
+    }
+
+    const missingFields = ['address', 'city', 'state']
+        .filter((field) => typeof shippingAddress[field] !== 'string' || !shippingAddress[field].trim())
+        .map((field) => `shippingAddress.${field}`);
+    if (missingFields.length > 0) {
+        return res.status(400).json({ success: false, message: `Missing required fields: ${missingFields.join(', ')}` });
+    }
+
+    if (!paymentMethod || !ALLOWED_PAYMENT_METHODS.includes(paymentMethod)) {
+        return res.status(400).json({ success: false, message: 'A valid payment method is required' });
+    }
+
+    // Merge duplicate lines for the same product and validate quantities
+    const quantities = new Map();
+    for (const item of items) {
+        const productId = item?.product?._id || item?.product || item?.productId;
+        const quantity = Number(item?.quantity);
+        if (!productId || !mongoose.Types.ObjectId.isValid(String(productId))) {
+            return res.status(400).json({ success: false, message: 'Each item must reference a valid product' });
+        }
+        if (!Number.isInteger(quantity) || quantity < 1) {
+            return res.status(400).json({ success: false, message: 'Each item quantity must be a whole number of at least 1' });
+        }
+        const key = String(productId);
+        quantities.set(key, (quantities.get(key) || 0) + quantity);
+    }
+
     const session = await mongoose.startSession();
-    session.startTransaction();
-    
+    let order;
+
     try {
-        const { items, shippingAddress, paymentMethod, totalAmount, customerInfo: initialCustomerInfo } = req.body;
-        
-        let customerInfo = initialCustomerInfo;
-        
-        // Debug logging
-        console.log('=== ORDER CREATION DEBUG ===');
-        console.log('Request body:', {
-            items: items ? `${items.length} items` : 'MISSING',
-            shippingAddress: shippingAddress ? 'PRESENT' : 'MISSING',
-            paymentMethod: paymentMethod || 'MISSING',
-            totalAmount: totalAmount || 'MISSING',
-            customerInfo: customerInfo ? 'PRESENT' : 'MISSING'
-        });
-        
-        if (customerInfo) {
-            console.log('CustomerInfo fields:', {
-                phone: customerInfo.phone || 'MISSING',
-                name: customerInfo.name || 'MISSING',
-                email: customerInfo.email || 'MISSING'
-            });
+        session.startTransaction();
+
+        // Price items from the database and reserve stock atomically
+        const orderItems = [];
+        for (const [productId, quantity] of quantities) {
+            const product = await Product.findOneAndUpdate(
+                { _id: productId, isActive: { $ne: false }, stock: { $gte: quantity } },
+                { $inc: { stock: -quantity } },
+                { new: true, session }
+            );
+
+            if (!product) {
+                const existing = await Product.findById(productId).session(session);
+                if (!existing || existing.isActive === false) {
+                    throw new AppError('One of the products in your cart is no longer available', 400);
+                }
+                throw new AppError(`Insufficient stock for ${existing.name}. Only ${existing.stock} left.`, 400);
+            }
+
+            if (product.isInStock !== product.stock > 0) {
+                product.isInStock = product.stock > 0;
+                await product.save({ session });
+            }
+
+            orderItems.push({ product: product._id, quantity, price: product.price });
         }
-        
-        if (shippingAddress) {
-            console.log('ShippingAddress fields:', {
-                address: shippingAddress.address || 'MISSING',
-                city: shippingAddress.city || 'MISSING',
-                state: shippingAddress.state || 'MISSING',
-                country: shippingAddress.country || 'MISSING'
-            });
+
+        const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        if (subtotal <= 0) {
+            throw new AppError('Order total must be greater than zero', 400);
         }
-        
-        // Validate request body structure
-        if (!items || !Array.isArray(items) || items.length === 0) {
-            throw new AppError('Items array is required and cannot be empty', 400);
-        }
-        
-        if (!shippingAddress || typeof shippingAddress !== 'object') {
-            throw new AppError('Shipping address is required and must be an object', 400);
-        }
-        
-        if (!customerInfo || typeof customerInfo !== 'object') {
-            // customerInfo is optional - use user data from database
-            const user = await User.findById(req.user.id);
-            customerInfo = {
-                name: user.name || user.firstName || '',
-                phone: user.phone || '',
-                email: user.email || ''
-            };
-        }
-        
-        if (!paymentMethod || typeof paymentMethod !== 'string') {
-            throw new AppError('Payment method is required', 400);
-        }
-        
-        if (!totalAmount || typeof totalAmount !== 'number' || totalAmount <= 0) {
-            throw new AppError('Total amount must be a positive number', 400);
-        }
+        const deliveryFee = calculateDeliveryFee(subtotal);
+        const totalAmount = subtotal + deliveryFee;
 
         if (paymentMethod === 'wallet') {
             const wallet = await Wallet.findOne({ userId: req.user.id }).session(session);
@@ -86,43 +104,7 @@ const createOrder = async (req, res) => {
             wallet.lockedAmount += totalAmount;
             await wallet.save({ session });
         }
-        
-        // Validate required fields (phone is only required if customerInfo was provided in request)
-        const missingFields = [];
-        
-        if (customerInfo.phone && !customerInfo.phone.trim()) {
-            missingFields.push('customerInfo.phone');
-        }
-        
-        if (!shippingAddress?.address) missingFields.push('shippingAddress.address');
-        if (!shippingAddress?.city) missingFields.push('shippingAddress.city');
-        if (!shippingAddress?.state) missingFields.push('shippingAddress.state');
-        
-        if (missingFields.length > 0) {
-            throw new AppError(`Missing required fields: ${missingFields.join(', ')}`, 400);
-        }
-        
-        // Validate items and update stock
-        for (const item of items) {
-            const product = await Product.findById(item.product).session(session);
-            if (!product) {
-                throw new AppError(`Product not found: ${item.product}`, 400);
-            }
-            
-            if (product.stock < item.quantity) {
-                throw new AppError(`Insufficient stock for product: ${product.name}`, 400);
-            }
-            
-            // Update product stock
-            product.stock -= item.quantity;
-            await product.save({ session });
-        }
 
-        // Debug referralInfo
-        console.log('=== REFERRAL DEBUG ===');
-        console.log('req.user.referredBy:', JSON.stringify(req.user.referredBy, null, 2));
-        console.log('req.user.referredBy?.user:', req.user.referredBy?.user);
-        
         // Extract referredBy correctly - handle all possible formats
         let referredBy = null;
         try {
@@ -145,117 +127,101 @@ const createOrder = async (req, res) => {
                 }
             }
         } catch (error) {
-            console.log('Error processing referredBy:', error);
+            console.error('Error processing referredBy:', error.message);
             referredBy = null;
         }
-        
-        console.log('Final referredBy:', referredBy);
-        console.log('=== END REFERRAL DEBUG ===');
 
-        // Create order in transaction
-        try {
+        // Generate a collision-resistant order number
+        const orderNumber = `ORD-${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
 
-            // Generate order number
-            const orderNumber = 'ORD-' + Date.now().toString().slice(-8);
-            
-            // Create order
-            const order = new Order({
-                orderNumber,
-                userId: req.user.id,
-                buyer: req.user.id,
-                items: items.map(item => ({
-                    product: item.product,
-                    quantity: item.quantity,
-                    price: item.price
-                })),
-                shippingAddress: {
-                    address: shippingAddress.address,
-                    city: shippingAddress.city,
-                    state: shippingAddress.state,
-                    country: shippingAddress.country || 'Nigeria',
-                    landmark: shippingAddress.landmark,
-                    deliveryInstructions: shippingAddress.deliveryInstructions
-                },
-                paymentMethod,
-                totalAmount,
+        order = new Order({
+            orderNumber,
+            userId: req.user.id,
+            buyer: req.user.id,
+            items: orderItems,
+            shippingAddress: {
+                address: shippingAddress.address.trim(),
+                city: shippingAddress.city.trim(),
+                state: shippingAddress.state.trim(),
+                country: shippingAddress.country || 'Nigeria',
+                zipCode: shippingAddress.zipCode,
+                landmark: shippingAddress.landmark,
+                deliveryInstructions: shippingAddress.deliveryInstructions
+            },
+            paymentMethod,
+            subtotal,
+            deliveryFee,
+            totalAmount,
+            notes: typeof req.body.notes === 'string' ? req.body.notes.slice(0, 500) : undefined,
+            status: 'pending',
+            referralInfo: {
+                referredBy: referredBy
+            },
+            statusHistory: [{
                 status: 'pending',
-                referralInfo: {
-                    referredBy: referredBy
-                },
-                statusHistory: [{
-                    status: 'pending',
-                    changedBy: req.user.id,
-                    note: 'Order created'
-                }]
-            });
+                changedBy: req.user.id,
+                note: 'Order created'
+            }]
+        });
 
-            await order.save({ session });
-            
-            // Apply seasonal promotions if any
-            try {
-                await SeasonalPromoService.applySeasonalPromo(order._id);
-            } catch (error) {
-                console.error('Error applying seasonal promotion:', error);
-                // Continue with order even if seasonal promo fails
-            }
-
-            // Process referral commission
-            try {
-                await SeasonalPromoService.updateReferralCommission(
-                    order._id, 
-                    req.user.referredBy
-                );
-            } catch (error) {
-                console.error('Error processing referral commission:', error);
-                // Continue with order even if referral processing fails
-            }
-            
-            // Assign order to a marketer
-            try {
-                await MarketerService.assignOrder(order._id);
-            } catch (error) {
-                console.error('Error assigning order to marketer:', error);
-                // Don't fail the order if marketer assignment fails
-                // The system will retry marketer assignment later
-            }
-            
-            await session.commitTransaction();
-            session.endSession();
-
-            // TODO: Send order confirmation email/SMS with order number
-            // TODO: Send notification to admin about new order
-
-            res.status(201).json({
-                success: true,
-                data: {
-                    orderId: order._id,
-                    orderNumber: order.orderNumber,
-                    status: order.status,
-                    totalAmount: order.totalAmount,
-                    shippingAddress: order.shippingAddress,
-                    items: order.items,
-                    createdAt: order.createdAt
-                }
-            });
-        } catch (error) {
-            await session.abortTransaction();
-            session.endSession();
-            
-            console.error('Error creating order:', error);
-            res.status(error.statusCode || 500).json({
-                success: false,
-                message: error.message || 'Error creating order',
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-        }
+        await order.save({ session });
+        await session.commitTransaction();
     } catch (error) {
-        console.error('Error in order creation:', error);
-        res.status(500).json({
+        if (session.inTransaction()) {
+            await session.abortTransaction().catch(() => {});
+        }
+        await session.endSession();
+
+        const statusCode = error.statusCode || 500;
+        if (statusCode >= 500) {
+            console.error('Error creating order:', error);
+        }
+        return res.status(statusCode).json({
             success: false,
-            message: 'Error processing order',
-            error: error.message
+            message: statusCode >= 500 ? 'Error creating order. Please try again.' : error.message,
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
+
+    await session.endSession();
+
+    // These steps read the committed order, so they must run after commit.
+    // Failures here never fail the order; the scheduler retries assignment.
+    try {
+        await SeasonalPromoService.applySeasonalPromo(order._id);
+    } catch (error) {
+        console.error('Error applying seasonal promotion:', error.message);
+    }
+
+    try {
+        await SeasonalPromoService.updateReferralCommission(order._id, order.referralInfo?.referredBy);
+    } catch (error) {
+        console.error('Error processing referral commission:', error.message);
+    }
+
+    try {
+        await MarketerService.assignOrder(order._id);
+    } catch (error) {
+        console.error('Error assigning order to marketer:', error.message);
+    }
+
+    const savedOrder = await Order.findById(order._id).lean();
+
+    return res.status(201).json({
+        success: true,
+        data: {
+            orderId: order._id,
+            _id: order._id,
+            orderNumber: order.orderNumber,
+            status: savedOrder?.status || order.status,
+            subtotal: order.subtotal,
+            deliveryFee: order.deliveryFee,
+            totalAmount: order.totalAmount,
+            shippingAddress: order.shippingAddress,
+            items: order.items,
+            createdAt: order.createdAt
+        }
+    });
 };
 
 // Mark order as delivered by marketer
@@ -318,7 +284,11 @@ const confirmDelivery = async (req, res) => {
 // Cancel order (user)
 const cancelOrder = async (req, res) => {
     try {
-        const { orderId } = req.params;
+        // Mounted as /:id/cancel
+        const orderId = req.params.id || req.params.orderId;
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            return res.status(400).json({ success: false, message: 'Invalid order ID' });
+        }
         const { reason } = req.body;
         
         const order = await OrderService.cancelOrder(orderId, req.user.id, reason);
@@ -367,12 +337,17 @@ const rejectOrder = async (req, res) => {
 // Get order details
 const getOrderDetails = async (req, res) => {
     try {
-        const { orderId } = req.params;
+        const orderId = req.params.id || req.params.orderId;
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            return res.status(400).json({ success: false, message: 'Invalid order ID' });
+        }
         const order = await OrderService.getOrderDetails(orderId, req.user.id, req.user.role);
-        
+
+        // `order` is kept for clients written against the previous response shape
         res.json({
             success: true,
-            data: formatOrderResponse(order)
+            data: formatOrderResponse(order),
+            order
         });
     } catch (error) {
         res.status(error.statusCode || 500).json({
@@ -412,9 +387,13 @@ const formatOrderResponse = (order) => {
         customerInfo: order.customerInfo,
         shippingAddress: order.shippingAddress,
         items: order.items,
+        subtotal: order.subtotal,
+        deliveryFee: order.deliveryFee,
         totalAmount: order.totalAmount,
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
+        isPaid: order.isPaid,
+        paidAt: order.paidAt,
         marketer: order.marketer,
         assignedAt: order.assignedAt,
         inTransitAt: order.inTransitAt,
@@ -481,40 +460,78 @@ const getOrder = async (req, res) => {
 };
 
 // Update order status
+// Admins may move an order to any status (corrections included), but stock and
+// marketer slots are released exactly once when it becomes cancelled/rejected.
 const updateOrderStatus = async (req, res) => {
     try {
-        const { status } = req.body;
-        const allowedStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
-        
+        const { status, note } = req.body;
+        const allowedStatuses = Order.schema.path('status').enumValues;
+
         if (!allowedStatuses.includes(status)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid status'
+                message: `Invalid status. Must be one of: ${allowedStatuses.join(', ')}`
             });
         }
-        
-        const order = await Order.findByIdAndUpdate(
-            req.params.id,
-            { status },
-            { new: true, runValidators: true }
-        );
-        
-        if (!order) {
+
+        const existing = await Order.findById(req.params.id);
+        if (!existing) {
             return res.status(404).json({
                 success: false,
                 message: 'Order not found'
             });
         }
-        
+
+        const isTerminal = (s) => s === 'cancelled' || s === 'rejected';
+        if (isTerminal(existing.status) && !isTerminal(status)) {
+            return res.status(400).json({
+                success: false,
+                message: `A ${existing.status} order cannot be reopened. Ask the customer to place a new order.`
+            });
+        }
+
+        if (existing.status === status) {
+            return res.json({ success: true, order: existing });
+        }
+
+        const timestampField = {
+            in_transit: 'inTransitAt',
+            delivered: 'deliveredAt',
+            completed: 'completedAt',
+            cancelled: 'cancelledAt',
+            rejected: 'rejectedAt'
+        }[status];
+
+        if (isTerminal(status)) {
+            // Delegates to the service so stock and marketer counts are released once
+            const order = await OrderService.updateOrderStatusAsAdmin(existing, status, req.user.id, note);
+            return res.json({ success: true, order });
+        }
+
+        const order = await Order.findOneAndUpdate(
+            { _id: existing._id, status: existing.status },
+            {
+                status,
+                ...(timestampField && { [timestampField]: new Date() }),
+                $push: { statusHistory: { status, changedBy: req.user.id, note: note || 'Updated by admin' } }
+            },
+            { new: true, runValidators: true }
+        );
+
+        if (!order) {
+            return res.status(409).json({ success: false, message: 'Order was updated by someone else. Please refresh and try again.' });
+        }
+
         res.json({
             success: true,
             order
         });
     } catch (error) {
-        console.error('Error updating order status:', error);
-        res.status(500).json({
+        const statusCode = error.statusCode || 500;
+        if (statusCode >= 500) console.error('Error updating order status:', error);
+        res.status(statusCode).json({
             success: false,
-            message: 'Error updating order status'
+            message: statusCode >= 500 ? 'Error updating order status' : error.message
         });
     }
 };
