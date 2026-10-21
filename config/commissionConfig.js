@@ -43,7 +43,16 @@ function calculateCommissions(saleAmount, totalSales = 0, isDirect = true) {
   };
 }
 
+// How a purchase commission is split when the buyer was referred by someone.
+// The referred buyer keeps 60% and the person who referred them gets 40%.
+// Buyers without a referrer keep 100%.
+const REFERRAL_SPLIT = {
+  BUYER: 0.6,
+  REFERRER: 0.4,
+};
+
 export {
+  REFERRAL_SPLIT,
   getCurrentRates,
   calculateCommissions,
   DEFAULT_COMMISSION_RATES,

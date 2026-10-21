@@ -17,45 +17,35 @@ export const getCart = async (req, res, next) => {
 
     let cart = await Cart.findOne({ user: req.user._id });
     
-    // If cart exists, populate product details
+    // Refresh items from the catalogue so the cart always shows current
+    // prices, names, images and stock, and drops products that are gone.
     if (cart) {
-      console.log('Cart found, processing items:', cart.items.length);
-      
-      // Get fresh product data to ensure we have the latest info
-      for (let i = 0; i < cart.items.length; i++) {
-        const item = cart.items[i];
-        const product = await Product.findById(item.product);
-        
-        if (product) {
-          // Update item with latest product data
-          item.productDetails = {
-            name: product.name,
-            price: product.price,
-            stock: product.stock,
-            sku: product.sku,
-            images: product.images || []
-          };
-          
-          // Ensure cart item has proper image data
-          if (!item.image && product.images && product.images.length > 0) {
-            const primaryImg = product.images.find(img => img.isPrimary) || product.images[0];
-            item.image = primaryImg?.url || '';
-            
-            // Also update the images array
-            item.images = product.images.map(img => ({
-              url: img.url,
-              isPrimary: img.isPrimary || false,
-              altText: img.altText || product.name
-            }));
-            
-            console.log('Updated cart item image:', {
-              productId: product._id,
-              productName: product.name,
-              primaryImage: item.image,
-              imageCount: item.images?.length || 0
-            });
-          }
-        }
+      const productIds = cart.items.map((item) => item.product);
+      const products = await Product.find({ _id: { $in: productIds } }).lean();
+      const byId = new Map(products.map((p) => [String(p._id), p]));
+
+      const freshItems = [];
+      for (const item of cart.items) {
+        const product = byId.get(String(item.product));
+        if (!product || product.isActive === false) continue;
+
+        const primaryImg = product.images?.find((img) => img.isPrimary) || product.images?.[0];
+        item.price = product.price;
+        item.name = product.name;
+        item.image = primaryImg?.url || item.image || '';
+        item.images = (product.images || []).map((img) => ({
+          url: img.url,
+          isPrimary: img.isPrimary || false,
+          altText: img.altText || product.name
+        }));
+        item.productDetails = { stock: product.stock, sku: product.sku || '' };
+        freshItems.push(item);
+      }
+
+      if (freshItems.length !== cart.items.length) {
+        // Persist removal of unavailable products
+        cart.items = freshItems;
+        await cart.save();
       }
     }
 
@@ -92,38 +82,23 @@ export const getCart = async (req, res, next) => {
  */
 export const addToCart = async (req, res, next) => {   
   try {
-    console.log('=== ADD TO CART DEBUG ===');
-    console.log('Add to cart request body:', req.body);
-    console.log('Headers:', {
-      authorization: req.headers.authorization ? 'Present' : 'Missing',
-      contentType: req.headers.contentType
-    });
-    console.log('Authenticated user:', req.user ? { 
-      id: req.user._id, 
-      email: req.user.email,
-      hasId: !!req.user._id,
-      idType: typeof req.user._id
-    } : 'NOT AUTHENTICATED');
-    
     // Check if user is authenticated
     if (!req.user || !req.user._id) {
-      console.log('Authentication failed - no user or user ID');
-      console.log('req.user exists:', !!req.user);
-      console.log('req.user._id exists:', !!req.user?._id);
       return next(new AppError('User authentication required', 401));
     }
-    
-    const { productId, quantity = 1 } = req.body;
+
+    const { productId } = req.body;
+    const quantity = parseInt(req.body.quantity ?? 1, 10);
 
     // Validate input
     if (!productId) {
-      console.log('Product ID is missing in request');
       return next(new AppError('Product ID is required', 400));
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return next(new AppError('Quantity must be a whole number of at least 1', 400));
     }
 
     // Get product details - try both ObjectId and slug lookups
-    console.log('Looking up product with ID/slug:', productId);
-    
     let product;
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(productId);
     
@@ -134,20 +109,8 @@ export const addToCart = async (req, res, next) => {
       product = await Product.findOne({ slug: productId });
     }
     
-    if (!product) {
-      console.log('Product not found with ID/slug:', productId);
+    if (!product || product.isActive === false) {
       return next(new NotFoundError('Product not found'));
-    }
-    console.log('Found product:', {
-      id: product._id,
-      name: product.name,
-      stock: product.stock,
-      hasImages: product.images && product.images.length > 0
-    });
-
-    // Check if product is in stock
-    if (product.stock < quantity) {
-      return next(new AppError(`Only ${product.stock} items available in stock`, 400));
     }
 
     // Find user's cart or create new one if it doesn't exist
@@ -242,17 +205,30 @@ export const addToCart = async (req, res, next) => {
       item => item.product.toString() === product._id.toString()
     );
 
+    // Stock check covers what's already in the cart plus what's being added
+    const alreadyInCart = itemIndex > -1 ? cart.items[itemIndex].quantity : 0;
+    if (product.stock < alreadyInCart + quantity) {
+      const remaining = Math.max(0, product.stock - alreadyInCart);
+      return next(new AppError(
+        remaining > 0
+          ? `Only ${remaining} more of ${product.name} can be added (${product.stock} in stock)`
+          : `${product.name} is out of stock`,
+        400
+      ));
+    }
+
     if (itemIndex > -1) {
-      // Update quantity if product already in cart
-      cart.items[itemIndex].quantity += quantity;
+      // Update quantity and refresh price if product already in cart
+      cart.items[itemIndex].quantity = alreadyInCart + quantity;
+      cart.items[itemIndex].price = product.price;
     } else {
-      // Add new item to cart with all images and primary image
+      // Add new item to cart. Price and name always come from the catalogue.
       cart.items.push({
         product: product._id,
-        quantity: parseInt(quantity, 10),
-        price: req.body.price ? parseFloat(req.body.price) : product.price,
-        name: req.body.name || product.name,
-        image: req.body.image || primaryImage,
+        quantity,
+        price: product.price,
+        name: product.name,
+        image: primaryImage,
         images: productImages,
         productDetails: {
           stock: product.stock,
@@ -357,10 +333,11 @@ export const addToCart = async (req, res, next) => {
  */
 export const updateCartItem = async (req, res, next) => {
   try {
+    // Cart items have no _id of their own, so :itemId is the product ID
     const { itemId } = req.params;
-    const { quantity } = req.body;
+    const quantity = parseInt(req.body.quantity, 10);
 
-    if (!quantity || quantity < 1) {
+    if (!Number.isInteger(quantity) || quantity < 1) {
       return next(new AppError('Valid quantity is required', 400));
     }
 
@@ -372,7 +349,7 @@ export const updateCartItem = async (req, res, next) => {
 
     // Find the item in cart
     const itemIndex = cart.items.findIndex(
-      item => item._id.toString() === itemId
+      item => item.product?.toString() === itemId
     );
 
     if (itemIndex === -1) {
@@ -381,16 +358,17 @@ export const updateCartItem = async (req, res, next) => {
 
     // Check product stock
     const product = await Product.findById(cart.items[itemIndex].product);
-    if (!product) {
+    if (!product || product.isActive === false) {
       return next(new NotFoundError('Product not found'));
     }
 
     if (product.stock < quantity) {
-      return next(new AppError(`Only ${product.stock} items available in stock`, 400));
+      return next(new AppError(`Only ${product.stock} of ${product.name} available in stock`, 400));
     }
 
-    // Update quantity
+    // Update quantity (and keep the price current)
     cart.items[itemIndex].quantity = quantity;
+    cart.items[itemIndex].price = product.price;
     await cart.save();
 
     return res.status(200).json({
@@ -422,9 +400,9 @@ export const removeFromCart = async (req, res, next) => {
       return next(new NotFoundError('Cart not found'));
     }
 
-    // Check if item exists in cart
+    // Check if item exists in cart (:itemId is the product ID)
     const initialLength = cart.items.length;
-    cart.items = cart.items.filter(item => item._id.toString() !== itemId);
+    cart.items = cart.items.filter(item => item.product?.toString() !== itemId);
     
     if (initialLength === cart.items.length) {
       return next(new NotFoundError('Item not found in cart'));
@@ -454,17 +432,17 @@ export const removeFromCart = async (req, res, next) => {
  */
 export const clearCart = async (req, res, next) => {
   try {
+    // Idempotent: clearing an empty or missing cart still succeeds
     const cart = await Cart.findOneAndDelete({ user: req.user._id });
-
-    if (!cart) {
-      return next(new NotFoundError('Cart not found'));
-    }
 
     return res.status(200).json({
       success: true,
       message: 'Cart cleared successfully',
       data: {
-        id: cart._id
+        id: cart?._id || null,
+        items: [],
+        totalItems: 0,
+        subtotal: 0
       }
     });
   } catch (error) {

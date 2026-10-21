@@ -47,7 +47,8 @@ router.get('/affiliates', authenticate, authorize(ROLES.ADMIN), adminController.
 router.get('/affiliates/:id', authenticate, authorize(ROLES.ADMIN), adminController.getAffiliate);
 router.put('/affiliates/:id/status', authenticate, authorize(ROLES.ADMIN), adminController.updateAffiliateStatus);
 router.get('/affiliates/:id/commissions', authenticate, authorize(ROLES.ADMIN), adminController.getAffiliateCommissions);
-router.post('/affiliates/commissions', authenticate, authorize(ROLES.ADMIN), adminController.createCommission);
+// The controller reads the affiliate from :id
+router.post('/affiliates/:id/commissions', authenticate, authorize(ROLES.ADMIN), adminController.createCommission);
 
 // Commission rate management routes
 router.route('/commission-rates')

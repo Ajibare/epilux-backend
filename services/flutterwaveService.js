@@ -2,6 +2,7 @@ import axios from 'axios';
 import crypto from 'crypto';
 import config from '../config/environment.js';
 import Order from '../models/Order.js';
+import Cart from '../models/Cart.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const FLUTTERWAVE_BASE_URL = config.FLUTTERWAVE_BASE_URL;
@@ -174,6 +175,12 @@ class FlutterwaveService {
                 order.status = 'processing';
             }
             await order.save();
+
+            // The cart has been checked out; empty it (best-effort)
+            await Cart.deleteOne({ user: order.userId }).catch((error) =>
+                console.error('Failed to clear cart after payment:', error.message)
+            );
+
             return { ...result, status: 'success' };
         }
 
