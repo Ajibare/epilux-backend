@@ -41,6 +41,7 @@ router.get('/orders', authenticate, authorize(ROLES.ADMIN), orderController.getO
 router.get('/orders/stats', authenticate, authorize(ROLES.ADMIN), orderController.getOrderStats);
 router.get('/orders/:id', authenticate, authorize(ROLES.ADMIN), orderController.getOrder);
 router.put('/orders/:id/status', authenticate, authorize(ROLES.ADMIN), orderController.updateOrderStatus);
+router.put('/orders/:id/assign', authenticate, authorize(ROLES.ADMIN), adminController.assignOrderToMarketer);
 
 // Affiliate management routes
 router.get('/affiliates', authenticate, authorize(ROLES.ADMIN), adminController.getAffiliates);

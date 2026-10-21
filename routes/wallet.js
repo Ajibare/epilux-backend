@@ -1,10 +1,12 @@
 import express from 'express';
 import { authenticate, admin } from '../middleware/auth.js';
-import { 
-    getWalletBalance, 
-    getWalletTransactions, 
+import WalletTransaction from '../models/WalletTransaction.js';
+import {
+    getWalletBalance,
+    getWalletTransactions,
     requestWithdrawal,
-    processWithdrawal
+    processWithdrawal,
+    getWithdrawalWindow
 } from '../controllers/walletController.js';
 
 const router = express.Router();
@@ -18,6 +20,9 @@ router.get('/balance', getWalletBalance);
 // Get wallet transactions
 router.get('/transactions', getWalletTransactions);
 
+// When withdrawals are open (admin-configured monthly window)
+router.get('/withdrawal-window', getWithdrawalWindow);
+
 // Request withdrawal
 router.post('/withdraw', requestWithdrawal);
 
@@ -27,21 +32,23 @@ router.use(admin);
 // Process withdrawal (approve/reject)
 router.post('/withdraw/:id/process', async (req, res) => {
     try {
-        const { status } = req.body;
+        const decision = req.body?.status || req.body?.action;
         const result = await processWithdrawal(
-            req.params.id, 
-            status, 
-            req.user.id
+            req.params.id,
+            decision,
+            req.user.id,
+            req.body?.adminNote || req.body?.note
         );
-        
+
         res.json({
             success: true,
-            message: `Withdrawal ${status} successfully`,
+            message: result.transaction.status === 'completed' ? 'Withdrawal marked as paid' : 'Withdrawal rejected and refunded to wallet',
             data: result
         });
     } catch (error) {
-        console.error('Error processing withdrawal:', error);
-        res.status(500).json({
+        const statusCode = error.statusCode || 500;
+        if (statusCode >= 500) console.error('Error processing withdrawal:', error);
+        res.status(statusCode).json({
             success: false,
             message: error.message || 'Error processing withdrawal'
         });
@@ -54,7 +61,9 @@ router.get('/withdrawals/pending', async (req, res) => {
         const withdrawals = await WalletTransaction.find({
             type: 'withdrawal',
             status: 'pending'
-        }).populate('userId', 'name email');
+        })
+            .sort({ createdAt: 1 })
+            .populate('userId', 'firstName lastName email profile.phone');
 
         res.json({
             success: true,

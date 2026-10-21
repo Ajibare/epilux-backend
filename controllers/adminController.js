@@ -5,7 +5,62 @@ import Order from '../models/Order.js';
 import AffiliateCommission from '../models/AffiliateCommission.js';
 import CommissionRate from '../models/CommissionRate.js';
 import AffiliateWithdrawal from '../models/AffiliateWithdrawal.js';
+import WalletTransaction from '../models/WalletTransaction.js';
 import SeasonalPromoService from '../services/seasonalPromoService.js';
+import MarketerService from '../services/marketerService.js';
+import { processWithdrawal } from './walletController.js';
+
+/**
+ * Assign (or reassign) a paid order to a marketer.
+ * Body: { marketerId } — omit it to pick the least busy marketer automatically.
+ * @route PUT /api/admin/orders/:id/assign
+ */
+export const assignOrderToMarketer = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    if (!order.isPaid) {
+      return res.status(400).json({ success: false, message: 'Only paid orders can be assigned for delivery' });
+    }
+    if (!['pending', 'processing', 'assigned', 'in_transit'].includes(order.status)) {
+      return res.status(400).json({ success: false, message: `A ${order.status} order cannot be reassigned` });
+    }
+
+    const { marketerId } = req.body || {};
+    if (marketerId) {
+      const marketer = await User.findOne({ _id: marketerId, role: 'marketer', suspended: { $ne: true } });
+      if (!marketer) {
+        return res.status(404).json({ success: false, message: 'Marketer not found or unavailable' });
+      }
+      if (order.marketer && String(order.marketer) === String(marketerId)) {
+        return res.json({ success: true, message: 'Order is already assigned to this marketer', data: order });
+      }
+    }
+
+    if (order.marketer) {
+      await MarketerService.unassignOrder(order, 'Reassigned by admin');
+    }
+
+    const updated = marketerId
+      ? await MarketerService.assignOrderTo(order._id, marketerId, 'Assigned by admin')
+      : await MarketerService.assignOrder(order._id);
+
+    if (!updated) {
+      return res.status(409).json({ success: false, message: 'Order could not be assigned. Please refresh and try again.' });
+    }
+
+    const populated = await Order.findById(updated._id).populate('marketer', 'firstName lastName email profile.phone');
+    res.json({ success: true, message: 'Order assigned', data: populated });
+  } catch (error) {
+    console.error('Assign order error:', error);
+    res.status(error.message === 'No available marketers to assign' ? 409 : 500).json({
+      success: false,
+      message: error.message === 'No available marketers to assign' ? 'No marketers are available right now' : 'Error assigning order'
+    });
+  }
+};
 
 // ===== HELPER FUNCTIONS =====
 
@@ -952,30 +1007,70 @@ const updateCommissionStatus = async (req, res) => {
   }
 };
 
+// Withdrawals are wallet ledger entries (type 'withdrawal'); this is the same
+// data customers create through POST /api/wallet/withdraw.
+const WITHDRAWAL_STATUS_LABELS = { pending: 'pending', completed: 'paid', cancelled: 'rejected', failed: 'rejected' };
+
+const formatWithdrawal = (tx) => ({
+  _id: tx._id,
+  id: tx._id,
+  reference: tx.reference,
+  amount: Math.abs(tx.amount),
+  status: WITHDRAWAL_STATUS_LABELS[tx.status] || tx.status,
+  user: tx.userId && typeof tx.userId === 'object' ? {
+    _id: tx.userId._id,
+    firstName: tx.userId.firstName,
+    lastName: tx.userId.lastName,
+    email: tx.userId.email,
+    phone: tx.userId.profile?.phone
+  } : null,
+  bankName: tx.metadata?.bankDetails?.bankName,
+  accountNumber: tx.metadata?.bankDetails?.accountNumber,
+  accountName: tx.metadata?.bankDetails?.accountName,
+  adminNote: tx.metadata?.adminNote,
+  requestedAt: tx.createdAt,
+  processedAt: tx.metadata?.processedAt,
+  createdAt: tx.createdAt
+});
+
 const getWithdrawals = async (req, res) => {
   try {
-    const { page = 1, limit = 10, status } = req.query;
-    const query = {};
-    
-    if (status) {
-      query.status = status;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const query = { type: 'withdrawal' };
+
+    const statusMap = { pending: 'pending', paid: 'completed', completed: 'completed', approved: 'completed', rejected: 'cancelled', cancelled: 'cancelled' };
+    if (req.query.status && statusMap[req.query.status]) {
+      query.status = statusMap[req.query.status];
     }
 
-    const [withdrawals, total] = await Promise.all([
-      AffiliateWithdrawal.find(query)
-        .populate('user', 'firstName lastName email')
-        .sort({ requestedAt: -1 })
-        .limit(limit * 1)
+    const [withdrawals, total, totals] = await Promise.all([
+      WalletTransaction.find(query)
+        .populate('userId', 'firstName lastName email profile.phone')
+        .sort({ createdAt: -1 })
+        .limit(limit)
         .skip((page - 1) * limit),
-      AffiliateWithdrawal.countDocuments(query)
+      WalletTransaction.countDocuments(query),
+      WalletTransaction.aggregate([
+        { $match: { type: 'withdrawal' } },
+        { $group: { _id: '$status', count: { $sum: 1 }, amount: { $sum: { $abs: '$amount' } } } }
+      ])
     ]);
+
+    const summary = Object.fromEntries(
+      ['pending', 'completed', 'cancelled'].map((s) => {
+        const row = totals.find((t) => t._id === s);
+        return [WITHDRAWAL_STATUS_LABELS[s], { count: row?.count || 0, amount: row?.amount || 0 }];
+      })
+    );
 
     res.json({
       success: true,
-      data: withdrawals,
+      data: withdrawals.map(formatWithdrawal),
+      summary,
       total,
       totalPages: Math.ceil(total / limit),
-      currentPage: Number(page)
+      currentPage: page
     });
   } catch (error) {
     console.error('Error fetching withdrawals:', error);
@@ -986,39 +1081,33 @@ const getWithdrawals = async (req, res) => {
   }
 };
 
+// Mark a withdrawal as paid (funds sent to the bank) or reject it (funds
+// return to the customer's wallet)
 const updateWithdrawalStatus = async (req, res) => {
   try {
     const { status, note } = req.body;
-    
-    if (!['pending', 'approved', 'rejected', 'paid'].includes(status)) {
+
+    if (!['approved', 'paid', 'completed', 'rejected'].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status. Must be one of: pending, approved, rejected, paid'
+        message: 'Status must be paid or rejected'
       });
     }
 
-    const withdrawal = await AffiliateWithdrawal.findByIdAndUpdate(
-      req.params.id,
-      { status, adminNote: note },
-      { new: true }
-    ).populate('user', 'firstName lastName email');
-
-    if (!withdrawal) {
-      return res.status(404).json({
-        success: false,
-        message: 'Withdrawal not found'
-      });
-    }
+    const { transaction } = await processWithdrawal(req.params.id, status, req.user.id, note);
+    await transaction.populate('userId', 'firstName lastName email profile.phone');
 
     res.json({
       success: true,
-      data: withdrawal
+      message: transaction.status === 'completed' ? 'Withdrawal marked as paid' : 'Withdrawal rejected and refunded to the wallet',
+      data: formatWithdrawal(transaction)
     });
   } catch (error) {
-    console.error('Error updating withdrawal status:', error);
-    res.status(500).json({
+    const statusCode = error.statusCode || 500;
+    if (statusCode >= 500) console.error('Error updating withdrawal status:', error);
+    res.status(statusCode).json({
       success: false,
-      message: 'Error updating withdrawal status'
+      message: statusCode >= 500 ? 'Error updating withdrawal status' : error.message
     });
   }
 };
