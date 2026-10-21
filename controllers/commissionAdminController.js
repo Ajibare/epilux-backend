@@ -165,22 +165,6 @@ export const getAllCommissions = async (req, res) => {
             if (endDate) query.createdAt.$lte = new Date(endDate);
         }
 
-        console.log('MongoDB Query:', JSON.stringify(query, null, 2));
-
-        // Debug: Check if Commission model exists and has any data
-        try {
-            const allCommissions = await AffiliateCommission.find({});
-            console.log('DEBUG: All affiliate commissions in database:', allCommissions.length);
-            console.log('DEBUG: Sample commission structure:', allCommissions[0] || 'No commissions at all');
-            
-            // Check collections
-            const collections = await AffiliateCommission.db.db.listCollections().toArray();
-            console.log('DEBUG: Available collections:', collections.map(c => c.name));
-            
-        } catch (dbError) {
-            console.error('DEBUG: Error checking database:', dbError);
-        }
-
         // Sort options
         const sort = {};
         sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
@@ -188,8 +172,8 @@ export const getAllCommissions = async (req, res) => {
         // Execute query with pagination
         const [commissions, total] = await Promise.all([
             AffiliateCommission.find(query)
-                .populate('affiliate', 'name email')
-                .populate('referredUser', 'name email')
+                .populate('affiliate', 'firstName lastName email')
+                .populate('referredUser', 'firstName lastName email')
                 .populate('order', 'orderNumber totalAmount status')
                 .sort(sort)
                 .limit(limit * 1)
