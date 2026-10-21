@@ -11,6 +11,7 @@ import RatingService from '../services/ratingService.js';
 import ProductRating from '../models/ProductRating.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { calculateDeliveryFee } from '../utils/orderPricing.js';
+import { getBuyerCommissionRate, postWalletTransaction } from '../services/earningsService.js';
 
 const ALLOWED_PAYMENT_METHODS = ['card', 'bank_transfer', 'cash_on_delivery', 'wallet', 'flutterwave'];
 
@@ -93,17 +94,9 @@ const createOrder = async (req, res) => {
         const deliveryFee = calculateDeliveryFee(subtotal);
         const totalAmount = subtotal + deliveryFee;
 
-        if (paymentMethod === 'wallet') {
-            const wallet = await Wallet.findOne({ userId: req.user.id }).session(session);
-            if (!wallet || wallet.availableBalance < totalAmount) {
-                throw new AppError('Insufficient wallet balance', 400);
-            }
-
-            // Lock funds during order processing
-            wallet.availableBalance -= totalAmount;
-            wallet.lockedAmount += totalAmount;
-            await wallet.save({ session });
-        }
+        // The buyer's reward rate is fixed when the order is placed, so later
+        // changes to the admin setting don't alter orders already in progress
+        const commissionRate = await getBuyerCommissionRate(req.user, session);
 
         // Extract referredBy correctly - handle all possible formats
         let referredBy = null;
@@ -152,10 +145,12 @@ const createOrder = async (req, res) => {
             subtotal,
             deliveryFee,
             totalAmount,
+            commissionRate,
             notes: typeof req.body.notes === 'string' ? req.body.notes.slice(0, 500) : undefined,
             status: 'pending',
             referralInfo: {
-                referredBy: referredBy
+                referredBy: referredBy,
+                referralCommissionRate: referredBy ? commissionRate : 0
             },
             statusHistory: [{
                 status: 'pending',
@@ -163,6 +158,34 @@ const createOrder = async (req, res) => {
                 note: 'Order created'
             }]
         });
+
+        if (paymentMethod === 'wallet') {
+            // Paying from wallet earnings settles the order immediately
+            await postWalletTransaction({
+                userId: req.user.id,
+                amount: -totalAmount,
+                type: 'debit',
+                reference: `PAY-${order._id}`,
+                description: `Payment for order ${orderNumber}`,
+                metadata: { orderId: order._id, orderNumber },
+                session
+            });
+            order.isPaid = true;
+            order.paidAt = new Date();
+            order.paymentStatus = 'completed';
+            order.payment = {
+                status: 'success',
+                method: 'wallet',
+                reference: `PAY-${order._id}`,
+                amount: totalAmount,
+                amountPaid: totalAmount,
+                currency: 'NGN',
+                initiatedAt: new Date(),
+                verifiedAt: new Date()
+            };
+            order.status = 'processing';
+            order.statusHistory.push({ status: 'processing', changedBy: req.user.id, note: 'Paid from wallet' });
+        }
 
         await order.save({ session });
         await session.commitTransaction();
@@ -186,7 +209,7 @@ const createOrder = async (req, res) => {
     await session.endSession();
 
     // These steps read the committed order, so they must run after commit.
-    // Failures here never fail the order; the scheduler retries assignment.
+    // Failures here never fail the order.
     try {
         await SeasonalPromoService.applySeasonalPromo(order._id);
     } catch (error) {
@@ -199,10 +222,14 @@ const createOrder = async (req, res) => {
         console.error('Error processing referral commission:', error.message);
     }
 
-    try {
-        await MarketerService.assignOrder(order._id);
-    } catch (error) {
-        console.error('Error assigning order to marketer:', error.message);
+    // A marketer is assigned once the order is paid. Online payments are
+    // assigned when the payment is verified; wallet payments are paid now.
+    if (order.isPaid) {
+        try {
+            await MarketerService.assignOrder(order._id);
+        } catch (error) {
+            console.error('Error assigning order to marketer:', error.message);
+        }
     }
 
     const savedOrder = await Order.findById(order._id).lean();
