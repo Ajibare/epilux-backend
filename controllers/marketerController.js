@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import { NotFoundError } from '../middleware/errorHandler.js';
+import OrderService from '../services/orderService.js';
 
 /**
  * @desc    Get marketer's assigned products
@@ -74,16 +75,8 @@ export const getAssignedOrders = async (req, res) => {
         const { status, page = 1, limit = 10 } = req.query;
         const skip = (page - 1) * limit;
         
-        // Debug logging
-        console.log('=== DEBUG MARKETER ORDERS ===');
-        console.log('req.user.id:', req.user.id);
-        console.log('req.user.email:', req.user.email);
-        console.log('req.user.role:', req.user.role);
-        console.log('status filter:', status);
-        
         const query = { marketer: req.user.id };
-        console.log('Query:', JSON.stringify(query, null, 2));
-        
+
         // Filter by status if provided
         if (status) {
             query.status = status;
@@ -97,21 +90,9 @@ export const getAssignedOrders = async (req, res) => {
             .skip(parseInt(skip))
             .limit(parseInt(limit))
             .lean();
-            
-        console.log('Orders found:', orders.length);
-        
+
         const total = await Order.countDocuments(query);
-        console.log('Total count:', total);
-        
-        // Check if marketer exists
-        const marketer = await User.findById(req.user.id);
-        console.log('Marketer in DB:', marketer ? marketer.email : 'Not found');
-        
-        // Check all orders for this marketer
-        const allMarketerOrders = await Order.find({ marketer: req.user.id });
-        console.log('All orders for this marketer:', allMarketerOrders.length);
-        console.log('=== END DEBUG ===');
-        
+
         // Format the response
         const formattedOrders = orders.map(order => ({
             _id: order._id,
@@ -173,17 +154,27 @@ export const updateOrderStatus = async (req, res) => {
             throw new NotFoundError('Order not found or not assigned to you');
         }
 
-        // Validate status transition
+        // Validate status transition. 'completed' is set by the customer's
+        // delivery confirmation (which also releases commission), not the marketer.
         const validTransitions = {
             'assigned': ['in_transit'],
-            'in_transit': ['delivered', 'cancelled'],
-            'delivered': ['completed']
+            'in_transit': ['delivered', 'cancelled']
         };
 
         if (!validTransitions[order.status] || !validTransitions[order.status].includes(status)) {
             return res.status(400).json({
                 success: false,
                 message: `Invalid status transition from ${order.status} to ${status}`
+            });
+        }
+
+        if (status === 'cancelled') {
+            // Shared path so reserved stock and the marketer's slot are released once
+            const cancelled = await OrderService.updateOrderStatusAsAdmin(order, 'cancelled', req.user.id, note || 'Cancelled by marketer');
+            return res.status(200).json({
+                success: true,
+                message: 'Order status updated to cancelled',
+                data: cancelled
             });
         }
 
@@ -195,14 +186,14 @@ export const updateOrderStatus = async (req, res) => {
             note: note || `Status changed to ${status}`
         });
 
+        if (status === 'in_transit') {
+            order.inTransitAt = new Date();
+        }
+
         // If order is delivered, set deliveredAt
         if (status === 'delivered') {
             order.deliveredAt = new Date();
-        }
-
-        // If order is completed, mark as completed
-        if (status === 'completed') {
-            order.completedAt = new Date();
+            order.markedDeliveredAt = new Date();
         }
 
         await order.save();
@@ -232,19 +223,12 @@ export const updateOrderStatus = async (req, res) => {
 export const getDashboard = async (req, res) => {
     try {
         const marketerId = req.user.id;
-        
-        // Debug logging
-        console.log('=== DEBUG MARKETER DASHBOARD ===');
-        console.log('marketerId:', marketerId);
-        console.log('marketerId type:', typeof marketerId);
-        
-        // Get order counts by status
+
+        // aggregate() does not cast types, so match on an ObjectId explicitly
         const orderStats = await Order.aggregate([
-            { $match: { marketer: marketerId } },
+            { $match: { marketer: new mongoose.Types.ObjectId(String(marketerId)) } },
             { $group: { _id: '$status', count: { $sum: 1 } } }
         ]);
-        
-        console.log('Order stats:', orderStats);
 
         // Get recent orders
         const recentOrders = await Order.find({ marketer: marketerId })
@@ -254,8 +238,6 @@ export const getDashboard = async (req, res) => {
             .populate('buyer', 'firstName lastName email')
             .select('orderNumber status totalAmount createdAt userId buyer');
 
-        console.log('Recent orders found:', recentOrders.length);
-        
         // Format recent orders for response
         const formattedRecentOrders = recentOrders.map(order => ({
             orderNumber: order.orderNumber,
@@ -265,7 +247,6 @@ export const getDashboard = async (req, res) => {
             createdAt: order.createdAt
         }));
 
-        console.log('=== END DEBUG DASHBOARD ===');
 
         // Calculate statistics
         const stats = {
@@ -316,7 +297,7 @@ export const getAllMarketersWithProducts = async (req, res) => {
     try {
         // Get all users with role 'marketer'
         const marketers = await User.find({ role: 'marketer' })
-            .select('name email phone status createdAt')
+            .select('firstName lastName email profile.phone isActive suspended assignedOrdersCount completedOrdersCount rating createdAt')
             .lean();
 
         // Get products assigned to each marketer

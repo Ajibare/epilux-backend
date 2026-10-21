@@ -34,9 +34,10 @@ router.get('/:id', getTicketById);
 router.post('/:id/messages', supportUpload, addMessage);
 
 // Update ticket status (admin/support only)
-router.put('/:id/status', authorize(['admin', 'support']), updateTicketStatus);
+// authorize() takes roles as separate arguments, not an array
+router.put('/:id/status', authorize('admin', 'support'), updateTicketStatus);
 
 // Assign ticket to support staff (admin only)
-router.put('/:id/assign', authorize(['admin']), assignTicket);
+router.put('/:id/assign', authorize('admin'), assignTicket);
 
 export default router;

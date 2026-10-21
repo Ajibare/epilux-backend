@@ -257,6 +257,7 @@ import walletRoutes from './routes/wallet.js';
 import paymentRoutes from './routes/payment.js';
 import flutterwaveRoutes from './routes/flutterwave.js';
 import ratingRoutes from './routes/ratingRoutes.js';
+import contactRoutes from './routes/contact.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
@@ -276,6 +277,7 @@ app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/commission/admin', commissionAdminRoutes);
 app.use('/api/marketer', marketerRoutes);
 app.use('/api/withdrawals', withdrawalRoutes);
+app.use('/api/contact', contactRoutes);
 // Ratings span several prefixes (/api/products/:id/ratings, /api/users/me/ratings,
 // /api/orders/:orderId/products/:productId/rate), so mount it last at /api.
 app.use('/api', ratingRoutes);

@@ -1,4 +1,6 @@
 import express from 'express';
+import mongoose from 'mongoose';
+import Order from '../models/Order.js';
 import { authenticate as protect, authorize } from '../middleware/auth.js';
 import * as marketerController from '../controllers/marketerController.js';
 import { getAllMarketersWithProducts } from '../controllers/marketerController.js';
@@ -34,12 +36,16 @@ router.put('/orders/:id/status', protect, marketerController.updateOrderStatus);
 // @access  Private/Marketer
 router.get('/orders/:id', protect, async (req, res) => {
     try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: 'Invalid order ID' });
+        }
+
         const order = await Order.findOne({
             _id: req.params.id,
             marketer: req.user.id
         })
-        .populate('userId', 'name email phone address')
-        .populate('items.productId', 'name price images');
+        .populate('userId', 'firstName lastName email profile.phone')
+        .populate('items.product', 'name price images');
 
         if (!order) {
             return res.status(404).json({

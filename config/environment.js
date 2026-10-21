@@ -32,16 +32,17 @@ const config = {
   FRONTEND_URL: process.env.FRONTEND_URL || 'https://www.epilux.com.ng' || 'https://epilux48.vercel.app' || 'https://epilux.com.ng',
 
   // Email configuration (merged legacy + new)
+  // SMTP_* takes precedence; EMAIL_* (used in the existing .env) is accepted too
   EMAIL_CONFIG: {
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
+    host: process.env.SMTP_HOST || process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port: Number(process.env.SMTP_PORT || process.env.EMAIL_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true' || Number(process.env.SMTP_PORT || process.env.EMAIL_PORT) === 465,
     auth: {
       user: process.env.SMTP_USER || process.env.EMAIL_USER,
       pass: process.env.SMTP_PASS || process.env.EMAIL_PASS,
     },
   },
-  EMAIL_FROM: process.env.EMAIL_FROM || process.env.SMTP_USER,
+  EMAIL_FROM: process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.EMAIL_USER,
 
   // File uploads
   MAX_FILE_SIZE: Number(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024, // 5MB

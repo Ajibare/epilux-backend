@@ -128,16 +128,19 @@ export const getProfile = async (req, res, next) => {
 // @access  Private
 export const updateProfile = async (req, res, next) => {
     try {
-        const { firstName, lastName, phone } = req.body;
-        
+        const { firstName, lastName } = req.body;
+        const phone = req.body.phone ?? req.body.profile?.phone;
+
+        // Only these fields are user-editable; everything else (role, balances,
+        // email) is ignored. Missing fields are left unchanged.
+        const updates = { updatedAt: Date.now() };
+        if (typeof firstName === 'string' && firstName.trim()) updates.firstName = firstName.trim();
+        if (typeof lastName === 'string' && lastName.trim()) updates.lastName = lastName.trim();
+        if (typeof phone === 'string') updates['profile.phone'] = phone.trim();
+
         const user = await User.findByIdAndUpdate(
             req.user.id,
-            { 
-                firstName,
-                lastName,
-                phone,
-                updatedAt: Date.now()
-            },
+            { $set: updates },
             { new: true, runValidators: true }
         ).select('-password');
 
@@ -152,9 +155,18 @@ export const updateProfile = async (req, res, next) => {
 
 
 
-// @desc    Get user address
-// @route   GET /api/users/me/address
+// @desc    Remove user address
+// @route   DELETE /api/users/me/address
 // @access  Private
+export const deleteAddress = async (req, res, next) => {
+    try {
+        await User.updateOne({ _id: req.user.id }, { $unset: { 'profile.address': 1 } });
+        res.status(200).json({ success: true, message: 'Address removed', data: {} });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // @desc    Get user address
 // @route   GET /api/users/me/address
 // @access  Private

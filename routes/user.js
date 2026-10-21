@@ -2,7 +2,7 @@
 import express from 'express';
 import { authenticate as protect } from '../middleware/auth.js';
 import { deleteUser, exportUserData, updateAddress, getProfile,   updateProfile,
-    getAddress, } from '../controllers/userController.js';
+    getAddress, deleteAddress } from '../controllers/userController.js';
 
 const router = express.Router();
 
@@ -39,6 +39,11 @@ router.put('/me', protect, updateProfile);
 // @desc    Get logged in user address
 // @access  Private
 router.get('/me/address', protect, getAddress);
+
+// @route   DELETE /api/users/me/address
+// @desc    Remove logged in user address
+// @access  Private
+router.delete('/me/address', protect, deleteAddress);
 
 
 

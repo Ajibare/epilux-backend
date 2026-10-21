@@ -3,20 +3,15 @@ import config from '../config/environment.js';
 
 class EmailService {
     constructor() {
+        const { host, port, secure, auth } = config.EMAIL_CONFIG;
+        this.fromAddress = auth.user;
+
         // Only create transporter if SMTP credentials are provided
-        if (config.SMTP_USER && config.SMTP_PASS) {
-            this.transporter = nodemailer.createTransport({
-                host: config.SMTP_HOST,
-                port: config.SMTP_PORT,
-                secure: config.SMTP_SECURE === 'true',
-                auth: {
-                    user: config.SMTP_USER,
-                    pass: config.SMTP_PASS
-                }
-            });
+        if (auth.user && auth.pass) {
+            this.transporter = nodemailer.createTransport({ host, port, secure, auth });
             this.isConfigured = true;
         } else {
-            console.warn('Email service not configured - SMTP_USER and SMTP_PASS required. Using mock email service for development.');
+            console.warn('Email service not configured - set SMTP_USER/SMTP_PASS (or EMAIL_USER/EMAIL_PASS). Emails will not be sent.');
             this.isConfigured = false;
         }
     }
@@ -25,17 +20,20 @@ class EmailService {
         const resetUrl = `${config.FRONTEND_URL}/reset-password?token=${resetToken.token}`;
         
         if (!this.isConfigured) {
-            // Mock email service for development
-            console.log('MOCK EMAIL - Password Reset Request');
-            console.log('To:', user.email);
-            console.log('Reset URL:', resetUrl);
-            console.log('Token:', resetToken.token);
-            console.log('--- End Mock Email ---');
-            return true;
+            if (config.NODE_ENV === 'development') {
+                // Local only: print the link so the flow can be tested without SMTP
+                console.log('MOCK EMAIL - Password Reset Request');
+                console.log('To:', user.email);
+                console.log('Reset URL:', resetUrl);
+                console.log('--- End Mock Email ---');
+                return true;
+            }
+            // Never log reset tokens in production; tell the caller it failed
+            throw new Error('Email service is not configured');
         }
-        
+
         const mailOptions = {
-            from: config.EMAIL_FROM || `"${config.APP_NAME}" <${config.SMTP_USER}>`,
+            from: config.EMAIL_FROM || `"${config.APP_NAME}" <${this.fromAddress}>`,
             to: user.email,
             subject: 'Password Reset Request',
             html: `
@@ -176,7 +174,7 @@ class EmailService {
         `;
 
         const mailOptions = {
-            from: config.EMAIL_FROM || `"${config.APP_NAME}" <${config.SMTP_USER}>`,
+            from: config.EMAIL_FROM || `"${config.APP_NAME}" <${this.fromAddress}>`,
             to,
             subject: `${config.APP_NAME} - ${subject}`,
             html

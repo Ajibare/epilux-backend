@@ -1,5 +1,6 @@
 // In authController.js
 import User from '../models/User.js';
+import { persistImage } from '../utils/imageStorage.js';
 
 // Change password
 export const changePassword = async (req, res) => {
@@ -60,24 +61,17 @@ export const updateProfile = async (req, res) => {
       const { firstName, lastName, phone, address } = req.body;
       const userId = req.user.id;
 
-      const updateData = {
-          firstName,
-          lastName,
-          'profile.phone': phone,
-          'profile.address': address
-      };
+      // Only user-editable fields; missing fields are left unchanged
+      const updateData = {};
+      if (typeof firstName === 'string' && firstName.trim()) updateData.firstName = firstName.trim();
+      if (typeof lastName === 'string' && lastName.trim()) updateData.lastName = lastName.trim();
+      if (typeof phone === 'string') updateData['profile.phone'] = phone.trim();
+      if (address && typeof address === 'object') updateData['profile.address'] = address;
 
       // Handle avatar upload if exists
       if (req.file) {
-          const result = await cloudinary.uploader.upload(req.file.path, {
-              folder: 'avatars',
-              width: 150,
-              crop: "scale"
-          });
-          updateData.avatar = {
-              public_id: result.public_id,
-              url: result.secure_url
-          };
+          const { url } = await persistImage(req.file, 'epilux/avatars');
+          updateData['profile.avatar'] = url;
       }
 
       const user = await User.findByIdAndUpdate(
@@ -94,7 +88,7 @@ export const updateProfile = async (req, res) => {
               firstName: user.firstName,
               lastName: user.lastName,
               email: user.email,
-              avatar: user.avatar,
+              avatar: user.profile?.avatar,
               phone: user.profile?.phone,
               address: user.profile?.address
           }
