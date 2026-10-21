@@ -22,7 +22,7 @@ export const getProductReviews = async (req, res, next) => {
         }
 
         const reviews = await Review.find(query)
-            .populate('user', 'name email')
+            .populate('user', 'firstName lastName')
             .sort({ createdAt: -1 });
 
         res.json({
@@ -73,7 +73,7 @@ export const createReview = async (req, res, next) => {
         });
 
         // Populate user data for response
-        await review.populate('user', 'name email');
+        await review.populate('user', 'firstName lastName');
 
         res.status(201).json({
             success: true,
@@ -127,7 +127,7 @@ export const updateReview = async (req, res, next) => {
         }
 
         const updatedReview = await review.save();
-        await updatedReview.populate('user', 'name email');
+        await updatedReview.populate('user', 'firstName lastName');
 
         res.json({
             success: true,

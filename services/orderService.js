@@ -220,9 +220,9 @@ class OrderService {
         }
 
         const order = await Order.findOne(query)
-            .populate('userId', 'firstName lastName email phone')
-            .populate('buyer', 'firstName lastName email phone')
-            .populate('marketer', 'firstName lastName phone')
+            .populate('userId', 'firstName lastName email profile.phone')
+            .populate('buyer', 'firstName lastName email profile.phone')
+            .populate('marketer', 'firstName lastName profile.phone rating')
             .populate('items.product', 'name price images category');
 
         if (!order) {
