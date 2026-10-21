@@ -705,10 +705,11 @@ router.post('/admin/users', authenticate, [
         .trim()
         .matches(/^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/)
         .withMessage('Please provide a valid phone number'),
+    // New admins are never created through the API
     body('role')
         .optional()
-        .isIn(['user', 'admin', 'affiliate', 'marketer'])
-        .withMessage('Invalid role specified')
+        .isIn(['user', 'affiliate', 'marketer'])
+        .withMessage('Role must be user, affiliate or marketer')
 ], handleValidationErrors, async (req, res) => {
     // Check if user is admin
     if (req.user.role !== ROLES.ADMIN) {
@@ -749,6 +750,7 @@ router.post('/admin/users', authenticate, [
             }
         });
 
+        if (role !== 'user') user.$locals.allowRoleChange = true; // admin-only route, role validated above
         await user.save({ session });
         await session.commitTransaction();
         session.endSession();
@@ -799,10 +801,11 @@ router.patch('/admin/users/:userId/role', authenticate, [
     param('userId')
         .notEmpty().withMessage('User ID is required')
         .isMongoId().withMessage('Invalid user ID format'),
+    // Nobody is promoted to admin through the API
     body('role')
         .notEmpty().withMessage('Role is required')
-        .isIn(['user', 'admin', 'affiliate', 'marketer'])
-        .withMessage('Invalid role. Must be one of: user, admin, affiliate, marketer')
+        .isIn(['user', 'affiliate', 'marketer'])
+        .withMessage('Role must be user, affiliate or marketer')
 ], handleValidationErrors, async (req, res) => {
     // Check if user is admin
     if (req.user.role !== ROLES.ADMIN) {

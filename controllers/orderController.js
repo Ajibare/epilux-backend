@@ -448,17 +448,50 @@ const formatOrderResponse = (order) => {
 };
 
 // Get all orders (admin only)
+// Filters: status (one or comma list), paid=true|false, unassigned=true (paid, no marketer yet),
+// marketer=<id>, search (order number, address or city); page/limit
 const getOrders = async (req, res) => {
     try {
-        const orders = await Order.find()
-            .populate('userId', 'firstName lastName email')
-            .populate('buyer', 'firstName lastName email')
-            .populate('items.product', 'name price')
-            .sort({ createdAt: -1 });
-        
+        const { status, paid, unassigned, marketer, search } = req.query;
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+        const query = {};
+
+        if (status) {
+            const statuses = String(status).split(',').map((s) => s.trim()).filter(Boolean);
+            query.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
+        }
+        if (paid === 'true') query.isPaid = true;
+        if (paid === 'false') query.isPaid = { $ne: true };
+        if (unassigned === 'true') {
+            query.isPaid = true;
+            query.marketer = null;
+            query.status = { $in: ['pending', 'processing'] };
+        }
+        if (marketer && mongoose.Types.ObjectId.isValid(marketer)) query.marketer = marketer;
+        if (search) {
+            const pattern = new RegExp(String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            query.$or = [{ orderNumber: pattern }, { 'shippingAddress.address': pattern }, { 'shippingAddress.city': pattern }];
+        }
+
+        const [orders, total] = await Promise.all([
+            Order.find(query)
+                .populate('userId', 'firstName lastName email profile.phone')
+                .populate('buyer', 'firstName lastName email profile.phone')
+                .populate('marketer', 'firstName lastName email profile.phone')
+                .populate('items.product', 'name price images')
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit),
+            Order.countDocuments(query)
+        ]);
+
         res.json({
             success: true,
             count: orders.length,
+            total,
+            page,
+            pages: Math.ceil(total / limit),
             orders
         });
     } catch (error) {
@@ -473,10 +506,14 @@ const getOrders = async (req, res) => {
 // Get single order
 const getOrder = async (req, res) => {
     try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: 'Invalid order ID' });
+        }
         const order = await Order.findById(req.params.id)
-            .populate('userId', 'firstName lastName email')
-            .populate('buyer', 'firstName lastName email')
-            .populate('items.product', 'name price');
+            .populate('userId', 'firstName lastName email profile.phone')
+            .populate('buyer', 'firstName lastName email profile.phone')
+            .populate('marketer', 'firstName lastName email profile.phone')
+            .populate('items.product', 'name price images');
         
         if (!order) {
             return res.status(404).json({
@@ -531,6 +568,29 @@ const updateOrderStatus = async (req, res) => {
 
         if (existing.status === status) {
             return res.json({ success: true, order: existing });
+        }
+
+        // Delivery stages only make sense once the customer has paid
+        if (!existing.isPaid && !['pending', 'cancelled', 'rejected'].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "This order hasn't been paid yet. It can only be cancelled or rejected until payment is received."
+            });
+        }
+        if (status === 'assigned' && !existing.marketer) {
+            return res.status(400).json({ success: false, message: 'Use "Assign marketer" to give this order to a marketer.' });
+        }
+        if (status === 'completed') {
+            // Completing pays the customer's reward, so it goes through the same path as a customer confirmation
+            const { order, earnings } = await MarketerService.completeByAdmin(existing._id, req.user.id, note);
+            return res.json({
+                success: true,
+                message: earnings.yourShare > 0
+                    ? `Order completed. ₦${earnings.yourShare.toLocaleString()} was added to the customer's wallet.`
+                    : 'Order completed.',
+                order,
+                earnings
+            });
         }
 
         const timestampField = {

@@ -129,47 +129,18 @@ router.get('/:id', validateMongoId, authenticate, catchAsync(async (req, res, ne
     });
 }));
 
-// Update order status (admin only)
-router.put('/:id/status', validateMongoId, validateOrderStatusUpdate, handleValidationErrors, authenticate, authorize('admin'), catchAsync(async (req, res, next) => {
-    const { status } = req.body;
-    
-    const order = await Order.findByIdAndUpdate(
-        req.params.id,
-        { status },
-        { new: true }
-    );
-    
-    if (!order) {
-        return next(new NotFoundError('Order not found'));
-    }
-    
-    res.json({
-        success: true,
-        message: 'Order status updated successfully',
-        order
-    });
-}));
+// Update order status (admin only). Same checks as PATCH and the admin route:
+// a raw update here once let unpaid orders be marked delivered.
+router.put('/:id/status', validateMongoId, authorize('admin'), catchAsync(updateOrderStatus));
 
-// Update payment status (admin only)
-router.put('/:id/payment-status', validateMongoId, authenticate, authorize('admin'), catchAsync(async (req, res, next) => {
-    const { paymentStatus } = req.body;
-    
-    const order = await Order.findByIdAndUpdate(
-        req.params.id,
-        { paymentStatus },
-        { new: true }
-    );
-    
-    if (!order) {
-        return next(new NotFoundError('Order not found'));
-    }
-    
-    res.json({
-        success: true,
-        message: 'Payment status updated successfully',
-        order
+// Payment status is set only by payment verification (Flutterwave or wallet),
+// never by hand, so an order can't be marked paid without the money arriving.
+router.put('/:id/payment-status', authorize('admin'), (req, res) => {
+    res.status(410).json({
+        success: false,
+        message: 'Payment status is updated automatically when a payment is verified.'
     });
-}));
+});
 
 // Get all orders (admin only)
 router.get('/', validatePagination, handleValidationErrors, authenticate, authorize('admin'), catchAsync(async (req, res) => {

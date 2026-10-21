@@ -190,50 +190,84 @@ class MarketerService {
                     throw new AppError('You can confirm this order once the marketer has marked it as delivered', 400);
                 }
 
-                const buyer = await User.findById(order.userId || order.buyer).session(session);
-                if (!buyer) {
-                    throw new AppError('Customer account not found', 404);
-                }
-
-                const now = new Date();
-                order.customerConfirmed = true;
-                order.confirmedAt = now;
-                order.completedAt = now;
-                order.status = 'completed';
-                order.$locals.skipStatusHistory = true;
-                order.statusHistory.push({ status: 'completed', changedBy: userId, note: 'Delivery confirmed by customer' });
-
-                const earnings = await releaseOrderEarnings(order, buyer, session);
-                await order.save({ session });
-
-                if (order.marketer) {
-                    await User.updateOne(
-                        { _id: order.marketer },
-                        { $inc: { assignedOrdersCount: -1, completedOrdersCount: 1 } },
-                        { session }
-                    );
-                    // Keep the counter from going negative on old data
-                    await User.updateOne(
-                        { _id: order.marketer, assignedOrdersCount: { $lt: 0 } },
-                        { $set: { assignedOrdersCount: 0 } },
-                        { session }
-                    );
-                }
-
-                result = {
-                    order,
-                    earnings: {
-                        total: earnings.total || 0,
-                        yourShare: earnings.buyerShare || 0,
-                        referrerShare: earnings.referrerShare || 0,
-                        rate: earnings.rate || 0
-                    }
-                };
+                result = await this.completeOrder(order, userId, 'Delivery confirmed by customer', session);
             });
             return result;
         } finally {
             await session.endSession();
         }
+    }
+
+    /**
+     * Admin completes a delivered order on the customer's behalf (e.g. the
+     * customer confirmed by phone). Pays the reward exactly like a customer
+     * confirmation does.
+     */
+    static async completeByAdmin(orderId, adminId, note = '') {
+        const session = await mongoose.startSession();
+        try {
+            let result;
+            await session.withTransaction(async () => {
+                const order = await Order.findById(orderId).session(session);
+                if (!order) {
+                    throw new AppError('Order not found', 404);
+                }
+                if (order.status === 'completed') {
+                    throw new AppError('This order is already completed', 400);
+                }
+                if (!order.isPaid || order.status !== 'delivered') {
+                    throw new AppError('Only paid orders that the marketer has marked as delivered can be completed', 400);
+                }
+                result = await this.completeOrder(order, adminId, note || 'Completed by admin on behalf of the customer', session);
+            });
+            return result;
+        } finally {
+            await session.endSession();
+        }
+    }
+
+    // Marks a delivered order completed, pays the reward and frees the marketer.
+    // Must run inside the caller's transaction.
+    static async completeOrder(order, actorId, note, session) {
+        const buyer = await User.findById(order.userId || order.buyer).session(session);
+        if (!buyer) {
+            throw new AppError('Customer account not found', 404);
+        }
+
+        const now = new Date();
+        order.customerConfirmed = true;
+        order.confirmedAt = now;
+        order.completedAt = now;
+        order.status = 'completed';
+        order.$locals.skipStatusHistory = true;
+        order.statusHistory.push({ status: 'completed', changedBy: actorId, note });
+
+        const earnings = await releaseOrderEarnings(order, buyer, session);
+        await order.save({ session });
+
+        if (order.marketer) {
+            await User.updateOne(
+                { _id: order.marketer },
+                { $inc: { assignedOrdersCount: -1, completedOrdersCount: 1 } },
+                { session }
+            );
+            // Keep the counter from going negative on old data
+            await User.updateOne(
+                { _id: order.marketer, assignedOrdersCount: { $lt: 0 } },
+                { $set: { assignedOrdersCount: 0 } },
+                { session }
+            );
+        }
+
+        return {
+            order,
+            earnings: {
+                total: earnings.total || 0,
+                yourShare: earnings.buyerShare || 0,
+                referrerShare: earnings.referrerShare || 0,
+                rate: earnings.rate || 0
+            }
+        };
     }
 }
 

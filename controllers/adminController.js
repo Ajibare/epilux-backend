@@ -6,6 +6,11 @@ import AffiliateCommission from '../models/AffiliateCommission.js';
 import CommissionRate from '../models/CommissionRate.js';
 import AffiliateWithdrawal from '../models/AffiliateWithdrawal.js';
 import WalletTransaction from '../models/WalletTransaction.js';
+import Wallet from '../models/Wallet.js';
+
+// Roles an admin may give from the panel. New admins are never created or
+// promoted through the API.
+const ASSIGNABLE_ROLES = ['user', 'affiliate', 'marketer'];
 import SeasonalPromoService from '../services/seasonalPromoService.js';
 import MarketerService from '../services/marketerService.js';
 import { processWithdrawal } from './walletController.js';
@@ -497,6 +502,22 @@ const getDashboardStats = async (req, res) => {
       return Math.round(((current - previous) / previous) * 100);
     };
 
+    // What needs the admin's attention right now
+    const [paidRevenueAgg, unassignedPaidOrders, inDelivery, awaitingConfirmation, pendingWithdrawalAgg, roleCounts] = await Promise.all([
+      Order.aggregate([
+        { $match: { isPaid: true, status: { $nin: ['cancelled', 'rejected'] } } },
+        { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } }
+      ]),
+      Order.countDocuments({ isPaid: true, marketer: null, status: { $in: ['pending', 'processing'] } }),
+      Order.countDocuments({ status: { $in: ['assigned', 'in_transit'] } }),
+      Order.countDocuments({ status: 'delivered' }),
+      WalletTransaction.aggregate([
+        { $match: { type: 'withdrawal', status: 'pending' } },
+        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: { $abs: '$amount' } } } }
+      ]),
+      User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }])
+    ]);
+
     // Get additional data in parallel
     const [recentUsers, recentActivities] = await Promise.all([
       User.find()
@@ -531,7 +552,19 @@ const getDashboardStats = async (req, res) => {
         totalProducts,
         lowStockProducts,
         activeAffiliates,
-        
+
+        // Money actually received (paid orders that weren't cancelled)
+        paidRevenue: paidRevenueAgg[0]?.total || 0,
+        paidOrders: paidRevenueAgg[0]?.count || 0,
+        unassignedPaidOrders,
+        inDelivery,
+        awaitingConfirmation,
+        pendingWithdrawals: {
+          count: pendingWithdrawalAgg[0]?.count || 0,
+          amount: pendingWithdrawalAgg[0]?.amount || 0
+        },
+        usersByRole: Object.fromEntries(roleCounts.map((r) => [r._id || 'user', r.count])),
+
         // Percentage changes
         changes: {
           totalOrders: calculateChange(totalOrders, lastMonthOrders),
@@ -683,12 +716,18 @@ const updateUser = async (req, res) => {
     // Update user fields
     user.firstName = firstName || user.firstName;
     user.lastName = lastName || user.lastName;
-    user.email = email || user.email;
+    if (email && email.toLowerCase().trim() !== user.email) {
+      const taken = await User.exists({ email: email.toLowerCase().trim(), _id: { $ne: user._id } });
+      if (taken) {
+        return res.status(409).json({ success: false, message: 'Another account already uses this email' });
+      }
+      user.email = email.toLowerCase().trim();
+    }
     if (role && role !== user.role) {
-      if (!['user', 'admin', 'affiliate', 'marketer'].includes(role)) {
+      if (!ASSIGNABLE_ROLES.includes(role)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid role. Must be one of: user, admin, affiliate, marketer'
+          message: `Role must be one of: ${ASSIGNABLE_ROLES.join(', ')}`
         });
       }
       user.role = role;
@@ -730,6 +769,24 @@ const deleteUser = async (req, res) => {
         success: false,
         message: 'Cannot delete admin users'
       });
+    }
+
+    // Don't delete an account that still has money or deliveries attached
+    if (user) {
+      const [wallet, openOrders] = await Promise.all([
+        Wallet.findOne({ userId: user._id }).lean(),
+        Order.countDocuments({
+          $or: [{ userId: user._id }, { buyer: user._id }, { marketer: user._id }],
+          isPaid: true,
+          status: { $in: ['pending', 'processing', 'assigned', 'in_transit', 'delivered'] }
+        })
+      ]);
+      if ((wallet?.availableBalance || 0) > 0 || (wallet?.lockedAmount || 0) > 0) {
+        return res.status(400).json({ success: false, message: 'This account still has a wallet balance or a pending withdrawal. Settle it first, or suspend the account instead.' });
+      }
+      if (openOrders > 0) {
+        return res.status(400).json({ success: false, message: `This account has ${openOrders} paid order${openOrders === 1 ? '' : 's'} in progress. Finish or reassign them first, or suspend the account instead.` });
+      }
     }
 
     const deletedUser = await User.findByIdAndDelete(id);
@@ -1176,6 +1233,13 @@ const suspendUser = async (req, res) => {
     if (typeof suspended !== 'boolean') {
       return res.status(400).json({ success: false, message: 'Suspended status is required and must be a boolean' });
     }
+    if (id === String(req.user._id || req.user.id)) {
+      return res.status(400).json({ success: false, message: "You can't suspend your own account" });
+    }
+    const target = await User.findById(id).select('role');
+    if (target?.role === 'admin') {
+      return res.status(403).json({ success: false, message: 'Admin accounts cannot be suspended' });
+    }
 
     const user = await User.findByIdAndUpdate(
       id,
@@ -1216,8 +1280,15 @@ const createUser = async (req, res) => {
       });
     }
 
+    if (!ASSIGNABLE_ROLES.includes(role)) {
+      return res.status(400).json({ success: false, message: `Role must be one of: ${ASSIGNABLE_ROLES.join(', ')}` });
+    }
+    if (String(password).length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: String(email).toLowerCase().trim() });
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -1229,7 +1300,7 @@ const createUser = async (req, res) => {
     // The User model's pre-save hook hashes the password; hashing it here as
     // well would make the account impossible to log in to.
     const newUser = new User({
-      email,
+      email: String(email).toLowerCase().trim(),
       password,
       firstName,
       lastName,
@@ -1241,6 +1312,7 @@ const createUser = async (req, res) => {
       }
     });
 
+    if (role !== 'user') newUser.$locals.allowRoleChange = true; // admin-only endpoint, role checked above
     await newUser.save();
 
     // Return user data without password
@@ -1288,10 +1360,10 @@ export const updateUserRole = async (req, res) => {
             });
         }
         
-        if (!['user', 'admin', 'affiliate', 'marketer'].includes(role)) {
+        if (!ASSIGNABLE_ROLES.includes(role)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid role. Must be one of: user, admin, affiliate, marketer'
+                message: `Role must be one of: ${ASSIGNABLE_ROLES.join(', ')}`
             });
         }
 
@@ -1356,16 +1428,24 @@ const createUpdateCommissionRate = async (req, res) => {
   try {
     const { rate, excludedRoles, startDay, endDay } = req.body;
     
-    if (rate === undefined) {
+    const numericRate = Number(rate);
+    if (rate === undefined || !Number.isFinite(numericRate) || numericRate < 0 || numericRate > 100) {
       return res.status(400).json({
         success: false,
-        message: 'Commission rate is required'
+        message: 'Commission rate must be a number between 0 and 100'
+      });
+    }
+    const isDay = (d) => d === undefined || (Number.isInteger(Number(d)) && Number(d) >= 1 && Number(d) <= 31);
+    if (!isDay(startDay) || !isDay(endDay) || (startDay !== undefined && endDay !== undefined && Number(startDay) > Number(endDay))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Withdrawal days must be between 1 and 31, and the start day cannot be after the end day'
       });
     }
 
     // Update or create commission rate document
     const updateData = {
-      commissionRate: rate,
+      commissionRate: numericRate,
       updatedBy: req.user.id
     };
 
@@ -1376,8 +1456,8 @@ const createUpdateCommissionRate = async (req, res) => {
 
     if (startDay !== undefined || endDay !== undefined) {
       updateData.withdrawalWindow = {
-        startDay: startDay !== undefined ? startDay : 26, // Default start day
-        endDay: endDay !== undefined ? endDay : 30       // Default end day
+        startDay: startDay !== undefined ? Number(startDay) : 26, // Default start day
+        endDay: endDay !== undefined ? Number(endDay) : 30       // Default end day
       };
     }
 

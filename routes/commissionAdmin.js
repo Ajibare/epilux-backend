@@ -4,9 +4,7 @@ import {
     getCommissionSettings,
     getAllCommissions,
     updateCommissionStatus,
-    requestWithdrawal, 
-    processWithdrawal, 
-    getWithdrawalHistory 
+    getWithdrawalHistory
 } from '../controllers/commissionAdminController.js';
 import { authenticate as protect, authorize, ROLES } from '../middleware/auth.js';
 import Withdrawal from '../models/Withdrawal.js';
@@ -28,15 +26,24 @@ router.route('/commissions')
 router.route('/commissions/:id/status')
     .put(protect, authorize(ROLES.ADMIN), (req, res) => updateCommissionStatus(req, res));
 
-// Withdrawal routes
-router.route('/withdraw')
-    .post(protect, (req, res) => requestWithdrawal(req, res));
+// Withdrawals now go through the wallet only (POST /api/wallet/withdraw,
+// processed in /api/admin/withdrawals). These old commissionBalance routes
+// were a second, unconnected way to request money, so they are retired.
+const walletOnly = (req, res) => res.status(410).json({
+    success: false,
+    message: 'Withdrawals are made from your wallet. Please use the Wallet page.'
+});
+router.post('/withdraw', protect, walletOnly);
+router.post('/withdraw/process', protect, authorize(ROLES.ADMIN), walletOnly);
 
-router.route('/withdraw/process')
-    .post(protect, authorize(ROLES.ADMIN), (req, res) => processWithdrawal(req, res));
-
+// Old withdrawal history: the owner or an admin only
 router.route('/withdraw/history/:userId')
-    .get(protect, (req, res) => getWithdrawalHistory(req, res));
+    .get(protect, (req, res) => {
+        if (req.params.userId !== String(req.user.id) && req.user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+        return getWithdrawalHistory(req, res);
+    });
 
 // @desc    Get all withdrawal requests
 // @route   GET /api/commission/admin/withdrawals

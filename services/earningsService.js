@@ -126,8 +126,16 @@ const findReferrer = async (buyer, session) => {
  * Commission = goods subtotal × the rate captured on the order when it was placed.
  */
 export const calculateOrderEarnings = async (order, buyer, session = null) => {
-    const base = order.subtotal || order.totalAmount - (order.deliveryFee || 0);
-    const rate = Number(order.commissionRate) || 0;
+    // Orders placed before pricing was snapshotted have subtotal 0 and a
+    // default commissionRate of 0 that nobody chose: price them from their
+    // items and the current rate instead of paying nothing.
+    const isLegacy = !(Number(order.subtotal) > 0);
+    const itemsTotal = (order.items || []).reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
+    const base = isLegacy
+        ? roundMoney(itemsTotal || Math.max(0, order.totalAmount - (order.deliveryFee || 0)))
+        : order.subtotal;
+    let rate = Number(order.commissionRate) || 0;
+    if (isLegacy && rate === 0) rate = await getBuyerCommissionRate(buyer, session);
     const total = roundMoney((base * rate) / 100);
     const referrer = total > 0 ? await findReferrer(buyer, session) : null;
 

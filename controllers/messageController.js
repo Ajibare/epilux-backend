@@ -232,10 +232,60 @@ const markAsRead = async (req, res) => {
   }
 };
 
+// Admin: every customer message (whichever admin it was addressed to), newest
+// first, each with the replies sent so far
+const getAdminInbox = async (req, res) => {
+  try {
+    const filter = { isAdminReply: false };
+    if (req.query.unread === 'true') filter.isRead = false;
+    const messages = await Message.find(filter)
+      .populate('sender', 'firstName lastName email role profile.phone')
+      .sort({ createdAt: -1 })
+      .limit(Math.min(200, parseInt(req.query.limit, 10) || 100))
+      .lean();
+
+    const replies = await Message.find({ isAdminReply: true, originalMessage: { $in: messages.map((m) => m._id) } })
+      .populate('sender', 'firstName lastName')
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const unread = await Message.countDocuments({ isAdminReply: false, isRead: false });
+
+    res.json({
+      success: true,
+      unread,
+      data: messages.map((m) => ({
+        ...m,
+        replies: replies.filter((r) => String(r.originalMessage) === String(m._id))
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching admin inbox:', error);
+    res.status(500).json({ success: false, message: 'Error fetching messages' });
+  }
+};
+
+// Admin: mark a customer message read/unread
+const setAdminRead = async (req, res) => {
+  try {
+    const message = await Message.findOneAndUpdate(
+      { _id: req.params.messageId, isAdminReply: false },
+      { $set: { isRead: req.body?.isRead !== false } },
+      { new: true }
+    );
+    if (!message) return res.status(404).json({ success: false, message: 'Message not found' });
+    res.json({ success: true, data: message });
+  } catch (error) {
+    res.status(400).json({ success: false, message: 'Could not update message' });
+  }
+};
+
 export {
   sendMessage,
   replyToMessage,
   getUserMessages,
   getUnreadCount,
   markAsRead,
+  getAdminInbox,
+  setAdminRead,
 };

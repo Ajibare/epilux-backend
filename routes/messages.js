@@ -4,6 +4,10 @@ import * as messageController from '../controllers/messageController.js';
 
 const router = express.Router();
 
+// Admin inbox (declared before '/:messageId' routes)
+router.get('/admin/inbox', authenticate, authorize('admin'), messageController.getAdminInbox);
+router.put('/admin/:messageId/read', authenticate, authorize('admin'), messageController.setAdminRead);
+
 // User routes
 router.post('/', authenticate, messageController.sendMessage);
 router.get('/', authenticate, messageController.getUserMessages);

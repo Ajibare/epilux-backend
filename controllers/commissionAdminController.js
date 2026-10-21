@@ -66,28 +66,13 @@ export const updateCommissionRate = async (req, res) => {
 // Get current commission settings
 export const getCommissionSettings = async (req, res) => {
     try {
-        console.log('=== GET COMMISSION SETTINGS REQUEST ===');
-        console.log('User ID:', req.user?.id);
-        console.log('User Role:', req.user?.role);
 
         let settings = await CommissionRate.findOne();
-        
-        console.log('Commission settings found:', !!settings);
-        if (settings) {
-            console.log('Current settings:', {
-                commissionRate: settings.commissionRate,
-                excludedRoles: settings.excludedRoles,
-                withdrawalWindow: settings.withdrawalWindow,
-                updatedAt: settings.updatedAt
-            });
-        }
-        
+
         // If no settings exist, return defaults
         if (!settings) {
-            console.log('No settings found, creating defaults');
             settings = new CommissionRate();
             await settings.save();
-            console.log('Default settings created');
         }
         
         const response = {
@@ -100,8 +85,6 @@ export const getCommissionSettings = async (req, res) => {
             }
         };
 
-        console.log('Response:', response);
-        console.log('=== END GET COMMISSION SETTINGS ===');
         
         res.json(response);
         
@@ -131,12 +114,6 @@ export const getAllCommissions = async (req, res) => {
         } = req.query;
 
         // Log incoming request parameters
-        console.log('=== GET ALL COMMISSIONS REQUEST ===');
-        console.log('User ID:', req.user?.id);
-        console.log('User Role:', req.user?.role);
-        console.log('Query Parameters:', req.query);
-        console.log('Filters:', { status, type, userId, startDate, endDate });
-        console.log('Pagination:', { page, limit, sortBy, sortOrder });
 
         // Build query
         const query = {};
@@ -182,10 +159,6 @@ export const getAllCommissions = async (req, res) => {
             AffiliateCommission.countDocuments(query)
         ]);
 
-        console.log('Query Results:');
-        console.log('- Total commissions found:', total);
-        console.log('- Commissions returned:', commissions.length);
-        console.log('- Sample commission data:', commissions[0] || 'No commissions found');
 
         // Calculate summary statistics
         const stats = await AffiliateCommission.aggregate([
@@ -232,7 +205,6 @@ export const getAllCommissions = async (req, res) => {
             paidCount: 0
         };
 
-        console.log('Summary Statistics:', summary);
 
         const response = {
             success: true,
@@ -246,8 +218,6 @@ export const getAllCommissions = async (req, res) => {
             }
         };
 
-        console.log('Response Data Size:', JSON.stringify(response).length, 'characters');
-        console.log('=== END GET ALL COMMISSIONS ===');
 
         res.json(response);
 
@@ -267,16 +237,8 @@ export const updateCommissionStatus = async (req, res) => {
         const { id } = req.params;
         const { status, rejectionReason } = req.body;
 
-        console.log('=== UPDATE COMMISSION STATUS REQUEST ===');
-        console.log('User ID:', req.user?.id);
-        console.log('User Role:', req.user?.role);
-        console.log('Commission ID:', id);
-        console.log('Request Body:', req.body);
-        console.log('New Status:', status);
-        console.log('Rejection Reason:', rejectionReason);
 
         if (!['pending', 'approved', 'paid', 'cancelled'].includes(status)) {
-            console.log('Invalid status provided:', status);
             return res.status(400).json({
                 success: false,
                 message: 'Invalid status. Must be one of: pending, approved, paid, cancelled'
@@ -284,22 +246,8 @@ export const updateCommissionStatus = async (req, res) => {
         }
 
         const commission = await AffiliateCommission.findById(id).populate('affiliate').populate('referredUser').populate('order');
-        
-        console.log('Commission found:', !!commission);
-        if (commission) {
-            console.log('Current commission data:', {
-                id: commission._id,
-                affiliate: commission.affiliate?.name || commission.affiliate,
-                referredUser: commission.referredUser?.name || commission.referredUser,
-                amount: commission.amount,
-                currentStatus: commission.status,
-                commissionRate: commission.commissionRate,
-                order: commission.order?.orderNumber || commission.order
-            });
-        }
-        
+
         if (!commission) {
-            console.log('Commission not found with ID:', id);
             return res.status(404).json({
                 success: false,
                 message: 'Commission record not found'
@@ -324,11 +272,6 @@ export const updateCommissionStatus = async (req, res) => {
 
         await commission.save();
 
-        console.log('Commission updated successfully:');
-        console.log('- Old Status:', oldStatus);
-        console.log('- New Status:', status);
-        console.log('- Paid At:', commission.paidAt);
-        console.log('- Payment Method:', commission.paymentMethod);
 
         const response = {
             success: true,
@@ -336,8 +279,6 @@ export const updateCommissionStatus = async (req, res) => {
             data: commission
         };
 
-        console.log('Response:', response);
-        console.log('=== END UPDATE COMMISSION STATUS ===');
 
         res.json(response);
 

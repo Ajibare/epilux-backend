@@ -26,14 +26,12 @@ router.get('/summary', auth, (req, res) => commissionController.getCommissionSum
 router.get('/balance', auth, (req, res) => commissionController.getCommissionBalance(req, res));
 
 // @route   POST api/commission/withdraw
-// @desc    Request commission withdrawal
+// @desc    Retired: withdrawals are made from the wallet (POST /api/wallet/withdraw)
 // @access  Private
-router.post('/withdraw', [
-  auth,
-  [
-    check('amount', 'Amount is required and must be positive').isFloat({ min: 0.01 })
-  ]
-], (req, res) => commissionController.requestCommissionWithdrawal(req, res));
+router.post('/withdraw', auth, (req, res) => res.status(410).json({
+  success: false,
+  message: 'Withdrawals are made from your wallet. Please use the Wallet page.'
+}));
 
 // @route   POST api/commission/process
 // @desc    Process commission for a sale (Admin only)

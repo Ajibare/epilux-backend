@@ -125,10 +125,9 @@ const MONGO_OPTIONS = {
   heartbeatFrequencyMS: 10000,
   maxPoolSize: 10,
   retryWrites: true,
-  w: 'majority',
-  // Optional override (e.g. 'primaryPreferred' locally so reads keep working
-  // when the primary is briefly unreachable). Unset in production.
-  ...(process.env.MONGO_READ_PREFERENCE && { readPreference: process.env.MONGO_READ_PREFERENCE })
+  w: 'majority'
+  // No readPreference override: orders, payments and wallet updates run in
+  // transactions, which MongoDB only allows with readPreference 'primary'.
 };
 
 mongoose.connection.on('connected', () => console.log('✅ MongoDB connected'));
