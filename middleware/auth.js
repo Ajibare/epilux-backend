@@ -85,6 +85,13 @@ const authenticate = async (req, res, next) => {
         next();
     } catch (error) {
         console.error('Auth middleware error:', error.message);
+        // Database unreachable: tell the client to retry rather than "server error"
+        if (/^Mongo(Network|ServerSelection)Error$/.test(error.name) || /connection .* closed|ECONNRESET|ETIMEDOUT/i.test(error.message)) {
+            return res.status(503).json({
+                success: false,
+                message: 'We are having trouble reaching our servers. Please try again in a moment.'
+            });
+        }
         if (error.name === 'JsonWebTokenError') {      
             return res.status(401).json({
                 success: false,

@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import WalletTransaction from '../models/WalletTransaction.js';
 import AffiliateCommission from '../models/AffiliateCommission.js';
 import AffiliateWithdrawal from '../models/AffiliateWithdrawal.js';
 import { generateReferralCode } from '../utils/affiliateHelpers.js';
@@ -354,43 +355,56 @@ export const getAffiliateReferrals = async (req, res) => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        // Build the query
-        let query = { referredBy: user.referralCode };
-        
-        // Apply status filter if provided
+        // Referred users store { referredBy: { user: <referrer id>, date } }
+        let query = { 'referredBy.user': user._id };
+
+        // "Active" = signed in within the last 30 days
         if (status === 'active') {
-            query.lastActive = { $gte: thirtyDaysAgo };
+            query.lastLogin = { $gte: thirtyDaysAgo };
         } else if (status === 'inactive') {
             query.$or = [
-                { lastActive: { $lt: thirtyDaysAgo } },
-                { lastActive: { $exists: false } }
+                { lastLogin: { $lt: thirtyDaysAgo } },
+                { lastLogin: { $exists: false } }
             ];
         }
 
-        const referredUsers = await User.find(query)
-            .select('firstName lastName email createdAt lastActive')
-            .sort({ lastActive: -1 });
+        const [referredUsers, earningsByUser] = await Promise.all([
+            User.find(query)
+                .select('firstName lastName createdAt lastLogin')
+                .sort({ createdAt: -1 }),
+            // Referral rewards paid to this user, grouped by the friend who ordered
+            WalletTransaction.aggregate([
+                { $match: { userId: user._id, type: 'commission', 'metadata.referredUser': { $exists: true } } },
+                { $group: { _id: '$metadata.referredUser', earned: { $sum: '$amount' }, orders: { $sum: 1 } } }
+            ])
+        ]);
 
-        const referrals = referredUsers.map(user => ({
-            id: user._id,
-            name: `${user.firstName} ${user.lastName}`,
-            email: user.email,
-            joinDate: user.createdAt,
-            lastActive: user.lastActive,
-            isActive: user.lastActive && user.lastActive >= thirtyDaysAgo
+        const earnings = new Map(earningsByUser.map((e) => [String(e._id), e]));
+
+        // Friends' emails are not exposed to the referrer
+        const referrals = referredUsers.map(u => ({
+            id: u._id,
+            name: `${u.firstName} ${(u.lastName || '').charAt(0)}.`.trim(),
+            joinDate: u.createdAt,
+            lastActive: u.lastLogin,
+            isActive: !!(u.lastLogin && u.lastLogin >= thirtyDaysAgo),
+            earned: earnings.get(String(u._id))?.earned || 0,
+            orders: earnings.get(String(u._id))?.orders || 0
         }));
 
         // Get counts for summary
         const activeCount = referrals.filter(r => r.isActive).length;
-        const inactiveCount = referrals.length - activeCount;
+        const totalEarned = earningsByUser.reduce((sum, e) => sum + e.earned, 0);
 
         res.json({
             success: true,
             data: referrals,
+            referrals,
             summary: {
                 total: referrals.length,
                 active: activeCount,
-                inactive: inactiveCount
+                inactive: referrals.length - activeCount,
+                totalEarned: Math.round(totalEarned * 100) / 100
             }
         });
     } catch (error) {

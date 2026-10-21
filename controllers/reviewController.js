@@ -54,7 +54,7 @@ export const createReview = async (req, res, next) => {
         // Check if user already reviewed this product
         const existingReview = await Review.findOne({
             user: req.user.id,
-            product: productId
+            product: product._id
         });
 
         if (existingReview) {
@@ -66,7 +66,7 @@ export const createReview = async (req, res, next) => {
 
         const review = await Review.create({
             user: req.user.id,
-            product: productId,
+            product: product._id,
             rating,
             comment,
             isApproved: false // Admin needs to approve reviews
@@ -153,25 +153,14 @@ export const deleteReview = async (req, res, next) => {
             productId = product._id;
         }
 
-        // Find and delete the review
-        const review = await Review.findOneAndDelete({
-            _id: reviewId,
-            product: productId,
-            user: req.user.id // Ensure the user owns the review
-        });
+        // Owners delete their own review; admins can delete any
+        const filter = { _id: reviewId, product: productId };
+        if (req.user.role !== 'admin') filter.user = req.user.id;
+        const review = await Review.findOneAndDelete(filter);
 
         if (!review) {
             throw new NotFoundError('Review not found');
         }
-
-        if (review.user.toString() !== req.user.id && req.user.role !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Not authorized to delete this review'
-            });
-        }
-
-        await review.remove();
 
         res.json({
             success: true,

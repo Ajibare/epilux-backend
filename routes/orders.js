@@ -32,7 +32,7 @@ router.get('/:id/track', catchAsync(async (req, res) => {
         const { id } = req.params;
         const order = await Order.findById(id)
             .select('orderNumber status trackingNumber createdAt updatedAt inTransitAt deliveredAt completedAt cancelledAt')
-            .populate('marketer', 'name phone');
+            .populate('marketer', 'firstName lastName profile.phone');
         
         if (!order) {
             return res.status(404).json({

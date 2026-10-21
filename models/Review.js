@@ -63,9 +63,12 @@ reviewSchema.post('save', async function() {
     await this.constructor.getAverageRating(this.product);
 });
 
-// Call getAverageRating after remove
-reviewSchema.post('remove', async function() {
+// Recalculate after a delete (document.deleteOne() or findOneAndDelete)
+reviewSchema.post('deleteOne', { document: true, query: false }, async function() {
     await this.constructor.getAverageRating(this.product);
+});
+reviewSchema.post('findOneAndDelete', async function(doc) {
+    if (doc) await doc.constructor.getAverageRating(doc.product);
 });
 
 const Review = mongoose.model('Review', reviewSchema);

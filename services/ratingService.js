@@ -1,5 +1,6 @@
 import ProductRating from '../models/ProductRating.js';
 import Order from '../models/Order.js';
+import Product from '../models/Product.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 class RatingService {
@@ -13,7 +14,7 @@ class RatingService {
         // Check if order exists and is delivered/completed
         const order = await Order.findOne({
             _id: orderId,
-            user: userId,
+            $or: [{ userId }, { buyer: userId }],
             status: { $in: ['delivered', 'completed'] }
         });
 
@@ -57,7 +58,7 @@ class RatingService {
             });
 
             // Update reviews count
-            await this.model('Product').findByIdAndUpdate(productId, {
+            await Product.findByIdAndUpdate(productId, {
                 $inc: { reviewsCount: 1 }
             });
         }
@@ -71,7 +72,7 @@ class RatingService {
 
         const [ratings, total] = await Promise.all([
             ProductRating.find({ product: productId })
-                .populate('user', 'name avatar')
+                .populate('user', 'firstName lastName avatar')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit),

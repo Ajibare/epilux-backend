@@ -78,43 +78,58 @@ export const getAssignedOrders = async (req, res) => {
         
         const query = { marketer: req.user.id };
 
-        // Filter by status if provided
+        // Filter by one status or a comma-separated list
         if (status) {
-            query.status = status;
+            const statuses = String(status).split(',').map((s) => s.trim()).filter(Boolean);
+            query.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
         }
 
         // Get orders with pagination
         const orders = await Order.find(query)
-            .populate('userId', 'name email phone')
+            .populate('userId', 'firstName lastName email profile.phone')
+            .populate('buyer', 'firstName lastName email profile.phone')
             .populate('items.product', 'name price images')
-            .sort({ createdAt: -1 })
+            .sort({ assignedAt: -1, createdAt: -1 })
             .skip(parseInt(skip))
             .limit(parseInt(limit))
             .lean();
 
         const total = await Order.countDocuments(query);
 
-        // Format the response
-        const formattedOrders = orders.map(order => ({
-            _id: order._id,
-            orderNumber: order.orderNumber,
-            status: order.status,
-            total: order.totalAmount,
-            items: order.items.map(item => ({
-                productId: item.product?._id,
-                name: item.name || item.product?.name,
-                quantity: item.quantity,
-                price: item.price,
-                image: item.product?.images?.[0]?.url || null
-            })),
-            customer: {
-                name: order.userId?.name || `${order.userId?.firstName || ''} ${order.userId?.lastName || ''}`.trim(),
-                phone: order.userId?.phone,
-                email: order.userId?.email
-            },
-            createdAt: order.createdAt,
-            updatedAt: order.updatedAt
-        }));
+        // Everything the marketer needs to make the delivery
+        const formattedOrders = orders.map(order => {
+            const customer = order.userId || order.buyer || {};
+            return {
+                _id: order._id,
+                orderNumber: order.orderNumber,
+                status: order.status,
+                total: order.totalAmount,
+                totalAmount: order.totalAmount,
+                deliveryFee: order.deliveryFee || 0,
+                paymentMethod: order.paymentMethod,
+                isPaid: !!order.isPaid,
+                items: order.items.map(item => ({
+                    productId: item.product?._id,
+                    name: item.name || item.product?.name,
+                    quantity: item.quantity,
+                    price: item.price,
+                    image: item.product?.images?.find((img) => img.isPrimary)?.url || item.product?.images?.[0]?.url || null
+                })),
+                customer: {
+                    name: `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
+                    phone: customer.profile?.phone || '',
+                    email: customer.email
+                },
+                shippingAddress: order.shippingAddress,
+                assignedAt: order.assignedAt,
+                inTransitAt: order.inTransitAt,
+                deliveredAt: order.deliveredAt,
+                completedAt: order.completedAt,
+                customerConfirmed: !!order.customerConfirmed,
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt
+            };
+        });
 
         res.status(200).json({
             success: true,

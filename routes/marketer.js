@@ -14,12 +14,12 @@ router.post('/admin/assign-product', protect, authorize('admin'), assignProductT
 // @desc    Get marketer dashboard with order statistics
 // @route   GET /api/marketer/dashboard
 // @access  Private/Marketer
-router.get('/dashboard', protect, marketerController.getDashboard);
+router.get('/dashboard', protect, authorize('marketer', 'admin'), marketerController.getDashboard);
 
 // @desc    Get marketer's assigned orders
 // @route   GET /api/marketer/orders
 // @access  Private/Marketer
-router.get('/orders', protect, marketerController.getAssignedOrders);
+router.get('/orders', protect, authorize('marketer', 'admin'), marketerController.getAssignedOrders);
 
 // @desc    Get marketer's assigned products
 // @route   GET /api/marketer/products
@@ -29,12 +29,12 @@ router.get('/products', protect, marketerController.getAssignedProducts);
 // @desc    Update order status
 // @route   PUT /api/marketer/orders/:id/status
 // @access  Private/Marketer
-router.put('/orders/:id/status', protect, marketerController.updateOrderStatus);
+router.put('/orders/:id/status', protect, authorize('marketer', 'admin'), marketerController.updateOrderStatus);
 
 // @desc    Get order details
 // @route   GET /api/marketer/orders/:id
 // @access  Private/Marketer
-router.get('/orders/:id', protect, async (req, res) => {
+router.get('/orders/:id', protect, authorize('marketer', 'admin'), async (req, res) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ success: false, message: 'Invalid order ID' });

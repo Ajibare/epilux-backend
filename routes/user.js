@@ -2,7 +2,7 @@
 import express from 'express';
 import { authenticate as protect } from '../middleware/auth.js';
 import { deleteUser, exportUserData, updateAddress, getProfile,   updateProfile,
-    getAddress, deleteAddress } from '../controllers/userController.js';
+    getAddress, deleteAddress, getMyReviews } from '../controllers/userController.js';
 
 const router = express.Router();
 
@@ -44,6 +44,11 @@ router.get('/me/address', protect, getAddress);
 // @desc    Remove logged in user address
 // @access  Private
 router.delete('/me/address', protect, deleteAddress);
+
+// @route   GET /api/users/me/reviews
+// @desc    Reviews written by the logged in user
+// @access  Private
+router.get('/me/reviews', getMyReviews);
 
 
 

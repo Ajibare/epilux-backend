@@ -175,7 +175,12 @@ const globalErrorHandler = (err, req, res, next) => {
     if (error.name === 'TokenExpiredError') {
         error = handleJWTExpiredError();
     }
-    
+
+    // Database unreachable (e.g. Atlas failover): retryable, not a server bug
+    if (/^Mongo(Network|ServerSelection|NotConnected)Error$/.test(error.name)) {
+        error = new AppError('We are having trouble reaching our servers. Please try again in a moment.', 503);
+    }
+
     // Send error response based on environment
     try {
         if (process.env.NODE_ENV === 'development') {

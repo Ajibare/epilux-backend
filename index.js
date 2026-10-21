@@ -116,61 +116,68 @@ if (configErrors.length > 0) {
 }
 
 // ✅ MongoDB connection
-let isConnected = false;
-const connectDB = async () => {
-  if (isConnected) {
-    console.log('Using existing database connection');
-    return;
-  }
-  
-  console.log('Connecting to MongoDB...');
-  console.log('MongoDB URI:', config.MONGODB_URI ? 'Present' : 'Missing!');
-  
-  try {
-    const options = {
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-      connectTimeoutMS: 45000,
-      maxPoolSize: 10,
-      retryWrites: true,
-      w: 'majority'
-    };
-    
-    await mongoose.connect(config.MONGODB_URI, options);
-    isConnected = true;
-    console.log('✅ MongoDB connected successfully');
-    
-    // Connection events for better debugging
-    mongoose.connection.on('connected', () => {
-      console.log('Mongoose connected to DB');
+// The driver reconnects by itself after a connection has been established;
+// we only need to retry the *initial* connect. Listeners are registered once.
+const MONGO_OPTIONS = {
+  serverSelectionTimeoutMS: 10000,
+  socketTimeoutMS: 45000,
+  connectTimeoutMS: 20000,
+  heartbeatFrequencyMS: 10000,
+  maxPoolSize: 10,
+  retryWrites: true,
+  w: 'majority',
+  // Optional override (e.g. 'primaryPreferred' locally so reads keep working
+  // when the primary is briefly unreachable). Unset in production.
+  ...(process.env.MONGO_READ_PREFERENCE && { readPreference: process.env.MONGO_READ_PREFERENCE })
+};
+
+mongoose.connection.on('connected', () => console.log('✅ MongoDB connected'));
+mongoose.connection.on('reconnected', () => console.log('✅ MongoDB reconnected'));
+mongoose.connection.on('disconnected', () => console.warn('⚠️ MongoDB disconnected; the driver will keep retrying'));
+mongoose.connection.on('error', (err) => console.error('MongoDB connection error:', err.message));
+
+let connectPromise = null;
+let retryDelayMs = 2000;
+
+const connectDB = () => {
+  if (mongoose.connection.readyState === 1) return Promise.resolve();
+  if (connectPromise) return connectPromise;
+
+  connectPromise = mongoose.connect(config.MONGODB_URI, MONGO_OPTIONS)
+    .then(() => {
+      retryDelayMs = 2000;
+    })
+    .catch((error) => {
+      // Never exit: keep the API up and retry with backoff
+      console.error(`❌ MongoDB connection failed (${error.name}: ${error.message}). Retrying in ${Math.round(retryDelayMs / 1000)}s`);
+      setTimeout(() => connectDB(), retryDelayMs).unref?.();
+      retryDelayMs = Math.min(retryDelayMs * 2, 30000);
+    })
+    .finally(() => {
+      connectPromise = null;
     });
-    
-    mongoose.connection.on('error', (err) => {
-      console.error('Mongoose connection error:', err);
-      isConnected = false;
-    });
-    
-    mongoose.connection.on('disconnected', () => {
-      console.log('Mongoose disconnected');
-      isConnected = false;
-    });
-    
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', {
-      name: error.name,
-      message: error.message,
-      code: error.code,
-      codeName: error.codeName
-    });
-    // Don't exit in production to allow for auto-recovery
-    if (process.env.NODE_ENV !== 'production') {
-      process.exit(1);
-    }
-  }
+
+  return connectPromise;
 };
 
 // Initialize database connection
 connectDB();
+
+// Requests wait briefly for the database during a (re)connect instead of
+// failing; if it is still unavailable they get a clear 503.
+const waitForDatabase = async (req, res, next) => {
+  if (mongoose.connection.readyState === 1 || req.path === '/health') return next();
+  connectDB();
+  const deadline = Date.now() + 8000;
+  while (mongoose.connection.readyState !== 1 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  if (mongoose.connection.readyState === 1) return next();
+  res.status(503).json({
+    success: false,
+    message: 'We are having trouble reaching our servers. Please try again in a moment.'
+  });
+};
 
 // Configure and initialize uploads directory
 const isVercel = process.env.VERCEL === '1';
@@ -232,16 +239,11 @@ app.use('/uploads', express.static(uploadsDir, {
 
 console.log(`Serving static files from: ${uploadsDir}`);
 
-// Reconnect on connection loss
-setInterval(async () => {
-  if (!isConnected) {
-    console.log('Attempting to reconnect to MongoDB...');
-    await connectDB();
-  }
-}, 10000); // Try to reconnect every 10 seconds
-
 // ✅ Routes
 import authRoutes from './routes/auth.js';
+
+// Every API route needs the database; wait out short reconnects first
+app.use('/api', waitForDatabase);
 
 // Upload routes
 app.use('/api/uploads', uploadRoutes);
@@ -340,8 +342,8 @@ process.on('SIGINT', shutdown);
 // ✅ Export handler for Vercel
 const handler = async (req, res) => {
   try {
-    // Ensure database is connected
-    if (!isConnected) {
+    // Ensure database is connected (cold starts); waitForDatabase covers the rest
+    if (mongoose.connection.readyState !== 1) {
       await connectDB();
     }
     

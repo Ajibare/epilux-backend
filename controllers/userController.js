@@ -1,9 +1,46 @@
 // server/controllers/userController.js
 import User from '../models/User.js';
+import Wallet from '../models/Wallet.js';
+import Order from '../models/Order.js';
+import Review from '../models/Review.js';
 import { generateJsonExport } from '../utils/dataExport.js';
+
+// @desc    Reviews written by the logged in user (approved and pending)
+// @route   GET /api/users/me/reviews
+// @access  Private
+export const getMyReviews = async (req, res, next) => {
+    try {
+        const reviews = await Review.find({ user: req.user.id })
+            .populate('product', 'name images price slug')
+            .sort({ createdAt: -1 })
+            .lean();
+        res.status(200).json({ success: true, count: reviews.length, data: reviews });
+    } catch (error) {
+        next(error);
+    }
+};
 
 export const deleteUser = async (req, res, next) => {
     try {
+        // Don't let an account disappear while money or deliveries are outstanding
+        const [wallet, openOrders] = await Promise.all([
+            Wallet.findOne({ userId: req.user.id }).lean(),
+            Order.countDocuments({
+                $or: [{ userId: req.user.id }, { buyer: req.user.id }, { marketer: req.user.id }],
+                status: { $in: ['pending', 'processing', 'assigned', 'in_transit', 'delivered'] },
+                isPaid: true
+            })
+        ]);
+        if ((wallet?.availableBalance || 0) > 0 || (wallet?.lockedAmount || 0) > 0) {
+            return res.status(400).json({ success: false, message: 'Please withdraw your wallet balance (and wait for pending withdrawals) before deleting your account.' });
+        }
+        if (openOrders > 0) {
+            return res.status(400).json({ success: false, message: 'You have orders in progress. You can delete your account once they are completed.' });
+        }
+        if (req.user.role === 'admin') {
+            return res.status(400).json({ success: false, message: 'Admin accounts cannot be deleted from here.' });
+        }
+
         const user = await User.findByIdAndDelete(req.user.id);
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
