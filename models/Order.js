@@ -327,8 +327,8 @@ orderSchema.pre('save', async function(next) {
         }
     }
     
-    // Update status history if status changed
-    if (this.isModified('status')) {
+    // Update status history if status changed (new orders supply their own first entry)
+    if (this.isModified('status') && !this.isNew && !this.$locals.skipStatusHistory) {
         if (!this.statusHistory) {
             this.statusHistory = [];
         }
