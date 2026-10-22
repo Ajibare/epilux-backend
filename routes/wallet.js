@@ -8,6 +8,7 @@ import {
     processWithdrawal,
     getWithdrawalWindow
 } from '../controllers/walletController.js';
+import { getBanks, resolveAccount } from '../services/bankService.js';
 
 const router = express.Router();
 
@@ -22,6 +23,29 @@ router.get('/transactions', getWalletTransactions);
 
 // When withdrawals are open (admin-configured monthly window)
 router.get('/withdrawal-window', getWithdrawalWindow);
+
+// Nigerian banks for the withdrawal form (Flutterwave list, cached)
+router.get('/banks', async (req, res) => {
+    const { banks, source } = await getBanks();
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.json({ success: true, source, data: banks });
+});
+
+// Look up the name on an account. Advisory only: a failed lookup never blocks
+// a withdrawal. Limited per user so the provider API can't be abused.
+const lookups = new Map();
+router.post('/resolve-account', async (req, res) => {
+    const key = String(req.user.id);
+    const now = Date.now();
+    const recent = (lookups.get(key) || []).filter((t) => now - t < 10 * 60 * 1000);
+    if (recent.length >= 20) {
+        return res.json({ success: true, data: { verified: false, reason: 'rate_limited' } });
+    }
+    recent.push(now);
+    lookups.set(key, recent);
+    const result = await resolveAccount(req.body?.accountNumber, req.body?.bankCode);
+    res.json({ success: true, data: result });
+});
 
 // Request withdrawal
 router.post('/withdraw', requestWithdrawal);

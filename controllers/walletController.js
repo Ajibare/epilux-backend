@@ -129,6 +129,17 @@ export const requestWithdrawal = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Please provide your bank name, 10-digit account number and account name' });
     }
 
+    // Check the account name with the bank for the admin's benefit. This is
+    // advisory: whatever the result (including a timeout), the request goes ahead.
+    const lookup = bankDetails.bankCode ? await resolveAccount(accountNumber, bankDetails.bankCode) : { verified: false, reason: 'no_bank_code' };
+    const verification = {
+        verified: lookup.verified,
+        resolvedName: lookup.accountName,
+        nameMatches: lookup.verified ? namesMatch(bankDetails.accountName, lookup.accountName) : undefined,
+        reason: lookup.verified ? undefined : lookup.reason,
+        checkedAt: new Date()
+    };
+
     const session = await mongoose.startSession();
     try {
         let transaction;
@@ -160,7 +171,8 @@ export const requestWithdrawal = async (req, res) => {
                         bankName: String(bankDetails.bankName).trim(),
                         bankCode: bankDetails.bankCode,
                         accountNumber,
-                        accountName: String(bankDetails.accountName).trim()
+                        accountName: String(bankDetails.accountName).trim(),
+                        verification
                     },
                     adminApprovalRequired: true
                 },
