@@ -177,10 +177,13 @@ class FlutterwaveService {
             }
             await order.save();
 
-            // The cart has been checked out; empty it (best-effort)
-            await Cart.deleteOne({ user: order.userId }).catch((error) =>
-                console.error('Failed to clear cart after payment:', error.message)
-            );
+            // The cart has been checked out; empty it (best-effort). Offer orders
+            // are bought directly from the offer page, so the cart is left alone.
+            if (!order.offer?.slug) {
+                await Cart.deleteOne({ user: order.userId }).catch((error) =>
+                    console.error('Failed to clear cart after payment:', error.message)
+                );
+            }
 
             // Paid: hand the order to a marketer for delivery. If none is free,
             // the scheduler or an admin assigns it later.

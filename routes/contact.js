@@ -78,6 +78,9 @@ router.post('/', async (req, res) => {
             message: 'Thanks for reaching out. We will get back to you shortly.'
         });
     } catch (error) {
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ success: false, message: 'Some details are too long. Please shorten your message and try again.' });
+        }
         console.error('Contact form error:', error);
         res.status(500).json({ success: false, message: 'Could not send your message. Please try again.' });
     }

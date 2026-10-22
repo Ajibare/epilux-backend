@@ -206,6 +206,15 @@ const orderSchema = new Schema({
             required: true
         }
     }],
+    // Set when the order was placed from a promotional offer (prices come from the offer)
+    offer: {
+        offerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Offer' },
+        slug: String,
+        title: String,
+        bundles: Number,
+        bundleSize: Number,
+        unitPrice: Number
+    },
     // Sum of item price * quantity
     subtotal: {
         type: Number,

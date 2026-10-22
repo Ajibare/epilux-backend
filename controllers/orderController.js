@@ -12,6 +12,7 @@ import ProductRating from '../models/ProductRating.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { calculateDeliveryFee } from '../utils/orderPricing.js';
 import { getBuyerCommissionRate, postWalletTransaction } from '../services/earningsService.js';
+import { resolveOfferLine } from '../services/offerService.js';
 
 const ALLOWED_PAYMENT_METHODS = ['card', 'bank_transfer', 'cash_on_delivery', 'wallet', 'flutterwave'];
 
@@ -20,9 +21,12 @@ const ALLOWED_PAYMENT_METHODS = ['card', 'bank_transfer', 'cash_on_delivery', 'w
 // prices/totals are ignored so they can never be used to underpay.
 const createOrder = async (req, res) => {
     const { items, shippingAddress, paymentMethod } = req.body || {};
+    // Offer orders send { offer: <slug>, bundles } instead of items; the offer
+    // decides the product, quantity and price
+    const offerSlug = typeof req.body?.offer === 'string' && req.body.offer.trim() ? req.body.offer.trim() : null;
 
     // Validate request body structure before opening a transaction
-    if (!Array.isArray(items) || items.length === 0) {
+    if (!offerSlug && (!Array.isArray(items) || items.length === 0)) {
         return res.status(400).json({ success: false, message: 'Items array is required and cannot be empty' });
     }
 
@@ -43,7 +47,16 @@ const createOrder = async (req, res) => {
 
     // Merge duplicate lines for the same product and validate quantities
     const quantities = new Map();
-    for (const item of items) {
+    let offerLine = null;
+    if (offerSlug) {
+        try {
+            offerLine = await resolveOfferLine(offerSlug, req.body.bundles);
+        } catch (error) {
+            return res.status(error.statusCode || 500).json({ success: false, message: error.statusCode ? error.message : 'Error creating order. Please try again.' });
+        }
+        quantities.set(offerLine.productId, offerLine.quantity);
+    }
+    for (const item of offerSlug ? [] : items) {
         const productId = item?.product?._id || item?.product || item?.productId;
         const quantity = Number(item?.quantity);
         if (!productId || !mongoose.Types.ObjectId.isValid(String(productId))) {
@@ -84,7 +97,8 @@ const createOrder = async (req, res) => {
                 await product.save({ session });
             }
 
-            orderItems.push({ product: product._id, quantity, price: product.price });
+            // Offer orders use the offer's unit price; everything else the catalogue price
+            orderItems.push({ product: product._id, quantity, price: offerLine ? offerLine.unitPrice : product.price });
         }
 
         const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -146,6 +160,16 @@ const createOrder = async (req, res) => {
             deliveryFee,
             totalAmount,
             commissionRate,
+            ...(offerLine && {
+                offer: {
+                    offerId: offerLine.offer._id,
+                    slug: offerLine.offer.slug,
+                    title: offerLine.offer.title,
+                    bundles: offerLine.bundles,
+                    bundleSize: offerLine.offer.bundleSize,
+                    unitPrice: offerLine.unitPrice
+                }
+            }),
             notes: typeof req.body.notes === 'string' ? req.body.notes.slice(0, 500) : undefined,
             status: 'pending',
             referralInfo: {
