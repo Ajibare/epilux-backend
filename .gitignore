@@ -1,4 +1,5 @@
-# Local-only environment overrides (never commit)
+# Local environment configuration (never commit)
+.env
 .env.local
 .env.*.local
 
