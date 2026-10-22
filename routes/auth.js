@@ -83,13 +83,7 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
         session = await User.startSession();
         session.startTransaction();
 
-        // Find an available marketer (affiliate with the least number of assigned users)
-        const marketer = await User.findOne({ role: 'affiliate' })
-            .sort({ 'affiliateInfo.assignedUsersCount': 1 })
-            .select('_id')
-            .session(session);
-
-        // Create user data
+        // Create user data. Marketers are matched to orders (after payment), not to customers.
         const userData = {
             email,
             password, // This will be hashed by the pre-save hook
@@ -97,7 +91,6 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
             lastName,
             role,
             emailVerified: true,
-            assignedMarketer: marketer?._id || null,
             profile: {
                 phone: phone.trim()
             }
@@ -110,15 +103,6 @@ router.post('/register', validateRegistration, handleValidationErrors, async (re
 
         const user = new User(userData);
         await user.save({ session });
-
-        // Update marketer's assigned users count if a marketer was assigned
-        if (marketer) {
-            await User.updateOne(
-                { _id: marketer._id },
-                { $inc: { 'affiliateInfo.assignedUsersCount': 1 } },
-                { session }
-            );
-        }
 
         // Update referring user's referral list and stats if applicable
         if (referringUser) {
@@ -705,11 +689,12 @@ router.post('/admin/users', authenticate, [
         .trim()
         .matches(/^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/)
         .withMessage('Please provide a valid phone number'),
-    // New admins are never created through the API
+    // Accounts are customers or marketers; new admins are never created through the API.
+    // Customers who refer friends earn from them without a separate role.
     body('role')
         .optional()
-        .isIn(['user', 'affiliate', 'marketer'])
-        .withMessage('Role must be user, affiliate or marketer')
+        .isIn(['user', 'marketer'])
+        .withMessage('Role must be customer (user) or marketer')
 ], handleValidationErrors, async (req, res) => {
     // Check if user is admin
     if (req.user.role !== ROLES.ADMIN) {
@@ -804,8 +789,8 @@ router.patch('/admin/users/:userId/role', authenticate, [
     // Nobody is promoted to admin through the API
     body('role')
         .notEmpty().withMessage('Role is required')
-        .isIn(['user', 'affiliate', 'marketer'])
-        .withMessage('Role must be user, affiliate or marketer')
+        .isIn(['user', 'marketer'])
+        .withMessage('Role must be customer (user) or marketer')
 ], handleValidationErrors, async (req, res) => {
     // Check if user is admin
     if (req.user.role !== ROLES.ADMIN) {

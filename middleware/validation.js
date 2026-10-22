@@ -27,10 +27,11 @@ const validateRegistration = [
         .matches(/^[a-zA-Z\s]+$/)
         .withMessage('Last name can only contain letters and spaces'),
 
+    // Sign-up always creates a customer; any other role in the request is refused
     body('role')
         .optional()
-        .isIn(['user', 'admin', 'affiliate'])
-        .withMessage('Role must be one of: user, admin, affiliate')
+        .isIn(['user'])
+        .withMessage('New accounts are always customer accounts')
 ];
 
 // Validation rules for user login

@@ -31,6 +31,8 @@ const userSchema = new Schema({
         required: true,
         trim: true
     },
+    // 'user' = customer. Customers who refer friends earn from them without a
+    // separate role; 'affiliate' is kept only so old records still validate.
     role: {
         type: String,
         enum: ['user', 'admin', 'affiliate', 'marketer'],
@@ -278,10 +280,6 @@ userSchema.pre('save', function(next) {
         this.referralCode = generateReferralCode();
     }
     
-    // Generate affiliate code if user is an affiliate
-    if (this.role === 'affiliate' && !this.affiliateInfo.affiliateCode) {
-        this.affiliateInfo.affiliateCode = `AFF${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
-    }
     next();
 });
 

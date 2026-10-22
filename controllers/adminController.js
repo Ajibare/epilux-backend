@@ -8,9 +8,13 @@ import AffiliateWithdrawal from '../models/AffiliateWithdrawal.js';
 import WalletTransaction from '../models/WalletTransaction.js';
 import Wallet from '../models/Wallet.js';
 
-// Roles an admin may give from the panel. New admins are never created or
-// promoted through the API.
-const ASSIGNABLE_ROLES = ['user', 'affiliate', 'marketer'];
+// Roles an admin may give from the panel. Everyone who shops is a customer
+// ('user'); customers who refer friends earn from them without a separate role.
+// New admins are never created or promoted through the API.
+const ASSIGNABLE_ROLES = ['user', 'marketer'];
+
+// A "referrer" (affiliate) is any customer who has brought in at least one friend
+const REFERRER_QUERY = { 'referrals.0': { $exists: true }, role: { $in: ['user', 'affiliate'] } };
 import SeasonalPromoService from '../services/seasonalPromoService.js';
 import MarketerService from '../services/marketerService.js';
 import { processWithdrawal } from './walletController.js';
@@ -461,7 +465,7 @@ const getDashboardStats = async (req, res) => {
       Order.countDocuments({ status: 'completed' }),
       // Updated to use the new stock field
       Product.countDocuments({ stock: { $lt: 10 } }),
-      User.countDocuments({ role: 'affiliate', isActive: true }),
+      User.countDocuments(REFERRER_QUERY),
       
       // Previous period data
       Order.countDocuments({ 
@@ -482,11 +486,7 @@ const getDashboardStats = async (req, res) => {
         },
         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
       ]),
-      User.countDocuments({ 
-        role: 'affiliate',
-        isActive: true,
-        createdAt: { $lt: currentMonthStart }
-      }),
+      User.countDocuments({ ...REFERRER_QUERY, 'referrals.date': { $lt: currentMonthStart } }),
       Order.countDocuments({ 
         status: 'pending',
         createdAt: { 
@@ -866,15 +866,11 @@ const getRecentAffiliateActivity = async (req, res) => {
   }
 };
 
-// Affiliate management functions
+// Referrers ("affiliates"): customers who have referred at least one friend
 const getAffiliates = async (req, res) => {
   try {
-    const { page = 1, limit = 10, status } = req.query;
-    const query = { role: 'affiliate' };
-    
-    if (status) {
-      query.status = status;
-    }
+    const { page = 1, limit = 10 } = req.query;
+    const query = { ...REFERRER_QUERY };
 
     const [affiliates, total] = await Promise.all([
       User.find(query)
@@ -904,8 +900,8 @@ const getAffiliates = async (req, res) => {
 const getAffiliate = async (req, res) => {
   try {
     const affiliate = await User.findById(req.params.id).select('-password');
-    
-    if (!affiliate || affiliate.role !== 'affiliate') {
+
+    if (!affiliate || !['user', 'affiliate'].includes(affiliate.role)) {
       return res.status(404).json({
         success: false,
         message: 'Affiliate not found'
@@ -942,7 +938,7 @@ const updateAffiliateStatus = async (req, res) => {
       { new: true }
     ).select('-password');
 
-    if (!affiliate || affiliate.role !== 'affiliate') {
+    if (!affiliate || !['user', 'affiliate'].includes(affiliate.role)) {
       return res.status(404).json({
         success: false,
         message: 'Affiliate not found'
