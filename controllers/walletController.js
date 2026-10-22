@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import Wallet from '../models/Wallet.js';
 import { getWithdrawalWindowStatus } from '../services/earningsService.js';
+import { namesMatch, resolveAccount } from '../services/bankService.js';
 import WalletTransaction from '../models/WalletTransaction.js';
 import { v4 as uuidv4 } from 'uuid';
 

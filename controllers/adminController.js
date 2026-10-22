@@ -1080,6 +1080,14 @@ const formatWithdrawal = (tx) => ({
   bankName: tx.metadata?.bankDetails?.bankName,
   accountNumber: tx.metadata?.bankDetails?.accountNumber,
   accountName: tx.metadata?.bankDetails?.accountName,
+  // Advisory bank lookup made when the request was submitted
+  verification: tx.metadata?.bankDetails?.verification
+    ? {
+        verified: !!tx.metadata.bankDetails.verification.verified,
+        resolvedName: tx.metadata.bankDetails.verification.resolvedName,
+        nameMatches: tx.metadata.bankDetails.verification.nameMatches
+      }
+    : null,
   adminNote: tx.metadata?.adminNote,
   requestedAt: tx.createdAt,
   processedAt: tx.metadata?.processedAt,
