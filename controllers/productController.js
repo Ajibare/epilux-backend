@@ -161,6 +161,13 @@ const parseImageList = (raw) => {
         }));
 };
 
+// Index of the uploaded file the admin chose as the main image (multipart field
+// `primaryUploadIndex`); -1 when the main image is one of the kept images
+const primaryUploadIndex = (body) => {
+    const index = parseInt(body?.primaryUploadIndex, 10);
+    return Number.isInteger(index) && index >= 0 ? index : -1;
+};
+
 const ensureSinglePrimary = (images) => {
     if (images.length === 0) return images;
     const primaryIndex = Math.max(0, images.findIndex((img) => img.isPrimary));
@@ -211,7 +218,9 @@ const createProduct = async (req, res) => {
         let uploaded = [];
         if (req.files && req.files.length > 0) {
             uploaded = await persistImages(req.files);
-            images = images.concat(uploaded.map((img) => ({ ...img, isPrimary: false })));
+            const mainUpload = primaryUploadIndex(req.body);
+            if (mainUpload >= 0) images = images.map((img) => ({ ...img, isPrimary: false }));
+            images = images.concat(uploaded.map((img, index) => ({ ...img, isPrimary: index === mainUpload })));
         }
         images = ensureSinglePrimary(images).map((img, index) => ({
             ...img,
@@ -303,11 +312,12 @@ const getProducts = async (req, res) => {
 
         const query = {};
         
-        // Search by name or description
+        // Search by name or description (escaped: user text is not a regex)
         if (search) {
+            const pattern = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             query.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
+                { name: { $regex: pattern, $options: 'i' } },
+                { description: { $regex: pattern, $options: 'i' } }
             ];
         }
         
@@ -326,10 +336,11 @@ const getProducts = async (req, res) => {
         const sortOptions = {};
         sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
+        const pageSize = Math.min(200, Math.max(1, parseInt(limit, 10) || 10));
         let products = await Product.find(query)
             .sort(sortOptions)
-            .limit(limit * 1)
-            .skip((page - 1) * limit)
+            .limit(pageSize)
+            .skip((Math.max(1, parseInt(page, 10) || 1) - 1) * pageSize)
             .lean();
 
         // Process each product to ensure images are properly formatted
@@ -483,9 +494,12 @@ const updateProduct = async (req, res) => {
 
         let removedImages = [];
         if (keptImages !== undefined || uploaded.length > 0) {
+            const mainUpload = uploaded.length > 0 ? primaryUploadIndex(body) : -1;
+            const kept = (keptImages ?? product.images.map((img) => img.toObject()))
+                .map((img) => (mainUpload >= 0 ? { ...img, isPrimary: false } : img));
             const nextImages = ensureSinglePrimary([
-                ...(keptImages ?? product.images.map((img) => img.toObject())),
-                ...uploaded.map((img) => ({ ...img, isPrimary: false }))
+                ...kept,
+                ...uploaded.map((img, index) => ({ ...img, isPrimary: index === mainUpload }))
             ]).map((img, index) => ({
                 ...img,
                 altText: img.altText || `Image ${index + 1} of ${product.name}`
